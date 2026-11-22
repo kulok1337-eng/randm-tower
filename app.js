@@ -14,7 +14,9 @@ const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0';
 const ROOT = __dirname;
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
-const APP_URL = process.env.APP_URL || 'https://bot-1795350282-3904-efim111.bothost.tech/';
+const DOMAIN = (process.env.DOMAIN || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
+const APP_URL = process.env.APP_URL ||
+  (DOMAIN ? 'https://' + DOMAIN + '/' : 'https://bot-1795355360-3818-efim111.bothost.tech/');
 
 const BLOCKED = ['app.js', 'package.json', 'package-lock.json'];
 
