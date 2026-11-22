@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    DRAG TOWER — стили интерфейса
    Визуальный стиль: мультяшный «межпространственный лаборант»
    в духе Рика и Морти, но сдержанный:
@@ -141,7 +141,7 @@ html, body {
   inset: 0;
   z-index: 10;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: calc(var(--safe-top) + 16px) calc(var(--safe-right) + 16px)
            calc(var(--safe-bottom) + 16px) calc(var(--safe-left) + 16px);
@@ -165,6 +165,7 @@ html, body {
   text-align: center;
   background: linear-gradient(170deg, #ffffff, #eef8ff);
   border: 3px solid var(--ink);
+  margin: auto 0;
   box-shadow:
     0 7px 0 rgba(23, 48, 63, 0.22),
     inset 0 2px 0 #ffffff;
@@ -650,6 +651,11 @@ html, body {
 .skin-card.locked .skin-card-name { color: #49616f; }
 
 /* Уважаем системную настройку «меньше анимации» */
+/* В Telegram сверху висит шапка — добавляем отступ, чтобы логотип не прятался */
+body.tg .screen {
+  padding-top: calc(var(--safe-top) + 60px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .screen, .new-best, .chip-streak.hot, .tap-hint { animation: none !important; }
   .btn, .skin-card, .skin-strip { transition: none !important; }

@@ -211,6 +211,7 @@
     try {
       tg.ready();
       tg.expand();
+      document.body.classList.add('tg');
       if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
       if (tg.setHeaderColor) tg.setHeaderColor('#0e1519');
       if (tg.setBackgroundColor) tg.setBackgroundColor('#0e1519');
@@ -241,14 +242,9 @@
     } catch (e) { /* SDK может быть частично недоступен */ }
   }
 
-  // Берём из темы Telegram только текстовые цвета — фон у игры свой
-  function applyThemeParams() {
-    if (!tg || !tg.themeParams) return;
-    var p = tg.themeParams;
-    var root = document.documentElement;
-    if (isColor(p.text_color)) root.style.setProperty('--text', p.text_color);
-    if (isColor(p.hint_color)) root.style.setProperty('--text-dim', p.hint_color);
-  }
+  // Своя светлая палитра: цвета текста из темы Telegram НЕ применяем,
+  // иначе в тёмной теме белый текст пропадает на белых панелях.
+  function applyThemeParams() { /* намеренно пусто */ }
 
   function isColor(v) { return typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v); }
 
