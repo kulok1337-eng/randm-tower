@@ -1,4 +1,4 @@
-/**
+﻿/**
  * RICK TOWER — мини-сервер для Bothost.
  * Раздаёт файлы из этой же папки и, если задан BOT_TOKEN,
  * отвечает в Telegram на /start кнопкой запуска Mini App.
@@ -66,7 +66,7 @@ const server = http.createServer(function (req, res) {
     const ext = path.extname(filePath).toLowerCase();
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600'
+      'Cache-Control': ['.html', '.js', '.css'].indexOf(ext) >= 0 ? 'no-cache' : 'public, max-age=3600'
     });
     fs.createReadStream(filePath)
       .on('error', function () { res.end(); })

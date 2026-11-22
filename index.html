@@ -11,7 +11,7 @@
   <!-- Официальный SDK Telegram Mini App -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
 
@@ -49,7 +49,7 @@
 
       <!-- Текущий скин: превью + название, по клику открывается выбор -->
       <button id="btnSkins" class="skin-strip" type="button">
-        <img id="skinStripImg" class="skin-strip-img" src="assets/skins/classic.png" alt="Огурчик Рик" />
+        <img id="skinStripImg" class="skin-strip-img" src="classic.png" alt="Огурчик Рик" />
         <span class="skin-strip-text">
           <span class="skin-strip-label">Скин</span>
           <span id="skinStripName" class="skin-strip-name">Огурчик Рик</span>
@@ -87,7 +87,7 @@
       </p>
 
       <div class="skin-current">
-        <img id="skinPreview" class="skin-current-img" src="assets/skins/classic.png" alt="Огурчик Рик" />
+        <img id="skinPreview" class="skin-current-img" src="classic.png" alt="Огурчик Рик" />
         <div class="skin-current-info">
           <div class="skin-current-label">сейчас выбран</div>
           <div id="skinCurrentName" class="skin-current-name">Огурчик Рик</div>
@@ -181,7 +181,7 @@
   <div id="toast" class="toast hidden"></div>
 
   <!-- Каталог скинов подключается ПЕРЕД игрой -->
-  <script src="src/skins.js"></script>
-  <script src="game.js"></script>
+  <script src="skins.js?v=3"></script>
+  <script src="game.js?v=3"></script>
 </body>
 </html>
