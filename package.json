@@ -1,0 +1,14 @@
+{
+  "name": "drag-tower",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DRAG TOWER - Telegram Mini App",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {}
+}

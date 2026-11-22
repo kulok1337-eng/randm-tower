@@ -1,0 +1,53 @@
+DRAG TOWER — всё в одной папке
+==============================
+
+В папке нет вложенных папок — только файлы. Загружать на GitHub просто:
+откройте папку, выделите ВСЕ файлы (Ctrl+A) и перетащите в браузер.
+
+ФАЙЛЫ
+  index.html    страница игры
+  style.css     стили
+  game.js       логика игры
+  skins.js      список скинов
+  6 PNG         спрайты скинов
+  app.js        мини-сервер для Bothost
+  package.json  команда запуска
+  КАК-ЗАГРУЗИТЬ.txt  эта инструкция
+
+ШАГ 1. GITHUB
+  1. github.com -> + -> New repository
+  2. Имя: drag-tower, Public, README не добавлять -> Create repository
+  3. Add file -> Upload files
+  4. Выделите все файлы из этой папки и перетащите (папок нет, ошибиться сложно)
+  5. Commit changes
+
+  ВАЖНО: загружайте именно файлы, а не папку DRAG-TOWER.
+  В корне репозитория должны лежать index.html, app.js, package.json и PNG.
+
+ШАГ 2. BOTHOST
+  1. bothost.ru -> Создать бота (проект)
+  2. Поля:
+       Название: drag-tower
+       Платформа: Telegram
+       Язык: Node.js
+       Bot Token: токен от BotFather
+       Git URL: https://github.com/ВАШ_ЛОГИН/drag-tower.git
+       Ветка: main
+       Главный файл: app.js
+       Домен: drag-tower -> https://drag-tower.bothost.ru
+  3. Deploy, дождаться "Работает"
+  4. Проверка:
+       https://домен.bothost.ru/health -> ok
+       https://домен.bothost.ru/      -> игра
+
+  Без Git: загрузите ZIP этой папки как архив, главный файл app.js.
+
+ШАГ 3. BOTFATHER
+  1. /newbot -> имя и username (заканчивается на bot)
+  2. /newapp -> Title "Drag Tower", Web App URL = адрес Bothost,
+     Short name: dragtower
+  3. Игра: https://t.me/ВАШ_БОТ/dragtower
+  4. Кнопка меню: /setmenubutton -> URL -> текст "Играть"
+
+ТОКЕН
+  Только в настройках Bothost. В файлах игры его быть не должно.
