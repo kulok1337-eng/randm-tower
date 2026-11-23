@@ -42,6 +42,29 @@ function writeScores(obj) {
   } catch (e) { /* перезапуск не должен падать из-за файла */ }
 }
 
+/* Игроки и рефералы */
+const REF_BONUS = 50;
+const PLAYERS_FILE = path.join(DATA_DIR, 'players.json');
+
+function readPlayers() {
+  try {
+    const raw = fs.readFileSync(PLAYERS_FILE, 'utf8');
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch (e) { return {}; }
+}
+
+function writePlayers(obj) {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(PLAYERS_FILE, JSON.stringify(obj));
+  } catch (e) { /* ignore */ }
+}
+
+function urlQuery(url) {
+  try { return new URL(url, 'http://localhost').searchParams; } catch (e) { return new URLSearchParams(); }
+}
+
 function json(res, code, data) {
   const body = JSON.stringify(data);
   res.writeHead(code, {
@@ -147,7 +170,58 @@ const server = http.createServer(function (req, res) {
         scores[id] = { id: id, name: name, score: score };
         writeScores(scores);
       }
+      const players = readPlayers();
+      if (!players[id]) {
+        players[id] = { id: id, name: name, gems: 0, invitedBy: 0, invited: 0 };
+        writePlayers(players);
+      }
       return json(res, 200, { ok: true });
+    });
+  }
+
+  /* ---------------- Рефералка ---------------- */
+  if (urlPath === '/api/referral' && req.method === 'POST') {
+    return readBody(req, function (raw) {
+      let body = {};
+      try { body = JSON.parse(raw || '{}'); } catch (e) { return json(res, 400, { error: 'bad json' }); }
+
+      let user = verifyInitData(body.initData);
+      if (!user && BOT_TOKEN) return json(res, 403, { error: 'bad signature' });
+      if (!user && !BOT_TOKEN) user = { id: body.userId || 'local', first_name: 'Игрок' };
+      if (!user || !user.id) return json(res, 403, { error: 'no user' });
+
+      const me = String(user.id);
+      const ref = String(parseInt(body.ref, 10) || 0);
+      if (!ref || ref === me) return json(res, 200, { ok: false, reason: 'self' });
+
+      const players = readPlayers();
+      const mine = players[me] || { id: me, name: '', gems: 0, invitedBy: 0, invited: 0 };
+      if (mine.invitedBy) return json(res, 200, { ok: false, reason: 'already' });
+
+      const inviter = players[ref] || { id: ref, name: '', gems: 0, invitedBy: 0, invited: 0 };
+
+      mine.invitedBy = ref;
+      players[me] = mine;
+      inviter.gems = (inviter.gems || 0) + REF_BONUS;
+      inviter.invited = (inviter.invited || 0) + 1;
+      players[ref] = inviter;
+      writePlayers(players);
+      return json(res, 200, { ok: true, bonus: REF_BONUS });
+    });
+  }
+
+  if (urlPath === '/api/referrals' && req.method === 'GET') {
+    let user = verifyInitData(urlQuery(req.url).get('initData') || '');
+    if (!user && BOT_TOKEN) return json(res, 403, { error: 'bad signature' });
+    if (!user && !BOT_TOKEN) user = { id: urlQuery(req.url).get('userId') || 'local', first_name: 'Игрок' };
+    if (!user || !user.id) return json(res, 403, { error: 'no user' });
+
+    const players = readPlayers();
+    const mine = players[String(user.id)];
+    return json(res, 200, {
+      count: mine ? (mine.invited || 0) : 0,
+      earned: mine ? (mine.invited || 0) * REF_BONUS : 0,
+      gems: mine ? (mine.gems || 0) : 0
     });
   }
 

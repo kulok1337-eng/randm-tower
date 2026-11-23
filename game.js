@@ -46,10 +46,10 @@
   /* Username бота — нужен для реферальных ссылок (БЕЗ символа @).
      Это публичное имя, его можно держать в коде. Токен бота здесь
      быть НЕ должен никогда: game.js скачивает каждый игрок. */
-  var BOT_USERNAME = 'drag_tower_game_bot';
+  var BOT_USERNAME = 'ricktower_bot';
 
   /* Short name Mini App — то, что указал в BotFather при /newapp */
-  var APP_SHORT_NAME = 'dragtower';
+  var APP_SHORT_NAME = 'ricktower';
 
   /* Сколько кристаллов даётся за приглашённого друга.
      Значение дублируется на сервере — здесь оно только для показа. */
@@ -465,7 +465,7 @@
   // Делимся ссылкой через нативный диалог Telegram
   function inviteFriend() {
     var link = buildInviteLink();
-    var text = 'Собери башню из летающих тарелок 🛸 Жду тебя в DRAG TOWER!';
+    var text = 'Собери башню из огурчиков 🥒 Жду тебя в RICK TOWER!';
 
     if (tg && tg.openTelegramLink) {
       // share/url открывает выбор чата прямо внутри Telegram

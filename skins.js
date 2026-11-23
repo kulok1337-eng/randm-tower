@@ -28,7 +28,7 @@
   var SPRITE = {
     width: 768,
     height: 280,
-    content: { x: 24, y: 34, w: 720, h: 210 }
+    content: { x: 24, y: 34, w: 720, h: 200 }
   };
 
   var SKIN_LIST = [
@@ -44,7 +44,7 @@
       id: 'ice',
       name: 'Крио-Рик',
       desc: 'Закалён в жидком азоте. Хрустит.',
-      price: 120,
+      price: 180,
       img: 'ice.png',
       palette: { body: '#6fc3ef', body2: '#2a6ea8', accent: '#d8f3ff', led: '#f0fbff' }
     },
@@ -52,7 +52,7 @@
       id: 'chili',
       name: 'Жгучий Рик',
       desc: 'Перец в нём проснулся. Дышит огнём.',
-      price: 220,
+      price: 330,
       img: 'chili.png',
       palette: { body: '#e8553c', body2: '#7d1a12', accent: '#ffb08f', led: '#fff0e6' }
     },
@@ -60,7 +60,7 @@
       id: 'gold',
       name: 'Золотой Рик',
       desc: 'Корона из лабораторного золота.',
-      price: 450,
+      price: 675,
       img: 'gold.png',
       palette: { body: '#f7d45c', body2: '#a9771a', accent: '#fff4c2', led: '#fffdf0' }
     },
@@ -68,7 +68,7 @@
       id: 'cosmic',
       name: 'Космо-Рик',
       desc: 'Шлем, звёзды и немного космической пыли.',
-      price: 700,
+      price: 1050,
       img: 'cosmic.png',
       palette: { body: '#8b6de0', body2: '#2a1858', accent: '#cbb8ff', led: '#f4f0ff' }
     },
@@ -76,7 +76,7 @@
       id: 'robot',
       name: 'Робо-Рик',
       desc: 'Собран из запчастей портала. Антенна ловит C-137.',
-      price: 900,
+      price: 1350,
       img: 'robot.png',
       palette: { body: '#b9c3cc', body2: '#5b6770', accent: '#e8f1f5', led: '#ffffff' }
     }
