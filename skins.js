@@ -37,7 +37,7 @@
       name: 'Огурчик Рик',
       desc: 'Тот самый. Немного устал от науки.',
       price: 0,
-      img: 'classic.png',
+      img: 'classic.png?v=2',
       palette: { body: '#8fc63d', body2: '#4a7016', accent: '#d9f08a', led: '#f4ffd6' }
     },
     {
@@ -45,7 +45,7 @@
       name: 'Крио-Рик',
       desc: 'Закалён в жидком азоте. Хрустит.',
       price: 180,
-      img: 'ice.png',
+      img: 'ice.png?v=2',
       palette: { body: '#6fc3ef', body2: '#2a6ea8', accent: '#d8f3ff', led: '#f0fbff' }
     },
     {
@@ -53,7 +53,7 @@
       name: 'Жгучий Рик',
       desc: 'Перец в нём проснулся. Дышит огнём.',
       price: 330,
-      img: 'chili.png',
+      img: 'chili.png?v=2',
       palette: { body: '#e8553c', body2: '#7d1a12', accent: '#ffb08f', led: '#fff0e6' }
     },
     {
@@ -61,7 +61,7 @@
       name: 'Золотой Рик',
       desc: 'Корона из лабораторного золота.',
       price: 675,
-      img: 'gold.png',
+      img: 'gold.png?v=2',
       palette: { body: '#f7d45c', body2: '#a9771a', accent: '#fff4c2', led: '#fffdf0' }
     },
     {
@@ -69,7 +69,7 @@
       name: 'Космо-Рик',
       desc: 'Шлем, звёзды и немного космической пыли.',
       price: 1050,
-      img: 'cosmic.png',
+      img: 'cosmic.png?v=2',
       palette: { body: '#8b6de0', body2: '#2a1858', accent: '#cbb8ff', led: '#f4f0ff' }
     },
     {
@@ -77,7 +77,7 @@
       name: 'Робо-Рик',
       desc: 'Собран из запчастей портала. Антенна ловит C-137.',
       price: 1350,
-      img: 'robot.png',
+      img: 'robot.png?v=2',
       palette: { body: '#b9c3cc', body2: '#5b6770', accent: '#e8f1f5', led: '#ffffff' }
     }
   ];
