@@ -159,8 +159,7 @@ html, body {
 
 /* Панель-«планшет из лаборатории»: толстый контур и смещённая тень */
 .panel {
-  width: calc(100vw - 32px);
-  max-width: 440px;
+  width: min(440px, calc(100vw - 32px));
   padding: 26px 22px;
   border-radius: 20px;
   text-align: center;
@@ -491,7 +490,7 @@ html, body {
 /* ============================================================
    Скины Огурчика Рика
    ============================================================ */
-.panel-wide { width: calc(100vw - 32px); max-width: 520px; }
+.panel-wide { width: min(520px, calc(100vw - 32px)); }
 
 /* Полоска текущего скина в главном меню */
 .skin-strip {
@@ -785,3 +784,118 @@ body.night .task-bar { background: #1b2b39; }
 body.night .board-note, body.night .rules, body.night .tagline { color: #a9c0d0; }
 body.night .stat { color: #dbe8f1; }
 body.night .logo-drag { color: #8fd45a; }
+body.night .board-row { background: #2a3f52; border-color: #0e1a24; color: #e9f2f8; }
+body.night .board-row.me { background: #2f4a3a; border-color: var(--portal); }
+body.night .board-rank { color: #9fb6c6; }
+body.night .board-row:nth-child(1) .board-rank { color: var(--mustard); }
+body.night .board-row:nth-child(2) .board-rank { color: #c7d2d8; }
+body.night .board-row:nth-child(3) .board-rank { color: #b08050; }
+body.night .board-name { color: #e9f2f8; }
+body.night .skin-strip { background: linear-gradient(180deg, #2b4053, #26394c); border-color: #0e1a24; }
+body.night .skin-strip-name { color: #e9f2f8; }
+body.night .skin-strip-label { color: #9fb6c6; }
+body.night .skin-strip-arrow { color: #8fd45a; }
+body.night .skin-balance, body.night .jar-stats { color: #e9f2f8; }
+body.night .toast { background: #2b4053; color: #e9f2f8; }
+body.night .skin-current { background: linear-gradient(180deg, #2b4053, #26394c); border-color: #0e1a24; }
+body.night .skin-current-name { color: #e9f2f8; }
+body.night .skin-current-label { color: #9fb6c6; }
+body.night .over-title { color: #f0e6c8; }
+body.night .skin-card .skin-name, body.night .skin-card .skin-price { color: #e9f2f8; }
+/* ============================================================
+   Всплывающая банка (30-й этаж)
+   ============================================================ */
+.jar-pop {
+  position: fixed;
+  left: 50%;
+  bottom: calc(120px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 40;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+}
+.jar-pop.play { animation: jarPopIn 1.8s ease-out forwards; }
+
+.jar-pop-glass {
+  width: 84px;
+  height: 96px;
+  border: 3px solid var(--ink);
+  border-radius: 10px 10px 18px 18px;
+  background: linear-gradient(180deg, rgba(190, 230, 255, 0.55), rgba(150, 205, 240, 0.85));
+  position: relative;
+  overflow: hidden;
+}
+.jar-pop-glass::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  right: -6px;
+  top: -8px;
+  height: 12px;
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+  background: #d9a94b;
+}
+.jar-pop-pickle {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  width: 78px;
+  transform: translateX(-50%);
+  animation: pickleDrop 1.8s ease-in-out forwards;
+}
+.jar-pop-text {
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  color: var(--portal-dim);
+  text-shadow: 0 2px 0 #fff;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  padding: 2px 8px;
+}
+body.night .jar-pop-text { background: #26394c; color: #cdf3b0; text-shadow: none; border-color: #0e1a24; }
+
+@keyframes jarPopIn {
+  0%   { opacity: 0; transform: translateY(16px) scale(0.9); }
+  12%  { opacity: 1; transform: translateY(0) scale(1); }
+  78%  { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-10px) scale(0.96); }
+}
+@keyframes pickleDrop {
+  0%   { transform: translate(-50%, -58px) rotate(-12deg); }
+  45%  { transform: translate(-50%, 0) rotate(4deg); }
+  60%  { transform: translate(-50%, -6px) rotate(-2deg); }
+  100% { transform: translate(-50%, 0) rotate(0deg); }
+}
+
+/* ---------- усиленная ночная тема (перекрываем белые плашки) ---------- */
+body.night .skin-strip,
+body.night .skin-current,
+body.night .board-row,
+body.night .result-card,
+body.night .jar-cell,
+body.night .task-row,
+body.night .skin-card {
+  background: #2a3f52 !important;
+  border-color: #0e1a24 !important;
+  color: #e9f2f8 !important;
+}
+body.night .board-row.me { background: #2f4a3a !important; border-color: var(--portal) !important; }
+body.night .skin-strip-name,
+body.night .skin-current-name,
+body.night .board-name,
+body.night .result-value,
+body.night .skin-card-name,
+body.night .task-head { color: #e9f2f8 !important; }
+body.night .board-rank,
+body.night .result-label,
+body.night .skin-strip-label,
+body.night .skin-current-label { color: #9fb6c6 !important; }
+body.night .board-score { color: #8fd45a !important; }
+body.night .task-bar { background: #1b2b39 !important; }

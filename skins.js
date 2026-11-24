@@ -38,7 +38,7 @@
       name: 'Огурчик Рик',
       desc: 'Тот самый. Немного устал от науки.',
       price: 0,
-      img: 'classic.png?v=2',
+      img: 'classic.png?v=3',
       palette: { body: '#8fc63d', body2: '#4a7016', accent: '#d9f08a', led: '#f4ffd6' }
     },
     {
@@ -47,7 +47,7 @@
       name: 'Мятный Рик',
       desc: 'Освежает и слегка холодит. Пахнет жвачкой.',
       price: 150,
-      img: 'mint.png?v=2',
+      img: 'mint.png?v=3',
       palette: { body: '#4fbfa8', body2: '#1f6b5c', accent: '#c9fff1', led: '#f0fffa' }
     },
     {
@@ -56,7 +56,7 @@
       name: 'Крио-Рик',
       desc: 'Закалён в жидком азоте. Хрустит.',
       price: 360,
-      img: 'ice.png?v=2',
+      img: 'ice.png?v=3',
       palette: { body: '#6fc3ef', body2: '#2a6ea8', accent: '#d8f3ff', led: '#f0fbff' }
     },
     {
@@ -65,7 +65,7 @@
       name: 'Жгучий Рик',
       desc: 'Перец в нём проснулся. Дышит огнём.',
       price: 660,
-      img: 'chili.png?v=2',
+      img: 'chili.png?v=3',
       palette: { body: '#e8553c', body2: '#7d1a12', accent: '#ffb08f', led: '#fff0e6' }
     },
     {
@@ -74,7 +74,7 @@
       name: 'Золотой Рик',
       desc: 'Корона из лабораторного золота.',
       price: 1350,
-      img: 'gold.png?v=2',
+      img: 'gold.png?v=3',
       palette: { body: '#f7d45c', body2: '#a9771a', accent: '#fff4c2', led: '#fffdf0' }
     },
     {
@@ -83,7 +83,7 @@
       name: 'Космо-Рик',
       desc: 'Шлем, звёзды и немного космической пыли.',
       price: 2100,
-      img: 'cosmic.png?v=2',
+      img: 'cosmic.png?v=3',
       palette: { body: '#8b6de0', body2: '#2a1858', accent: '#cbb8ff', led: '#f4f0ff' }
     },
     {
@@ -92,7 +92,7 @@
       name: 'Робо-Рик',
       desc: 'Собран из запчастей портала. Антенна ловит C-137.',
       price: 2700,
-      img: 'robot.png?v=2',
+      img: 'robot.png?v=3',
       palette: { body: '#b9c3cc', body2: '#5b6770', accent: '#e8f1f5', led: '#ffffff' }
     },
     {
@@ -101,7 +101,7 @@
       name: 'Магматический Рик',
       desc: 'Лава вместо сока. Трогать не советуем.',
       price: 3600,
-      img: 'magma.png?v=2',
+      img: 'magma.png?v=3',
       palette: { body: '#4a3a36', body2: '#1d1512', accent: '#ff7a1a', led: '#ffe3b0' }
     },
     {
@@ -110,7 +110,7 @@
       name: 'Богатый Рик',
       desc: 'Цилиндр, сигара и купюры вместо кожи.',
       price: 4500,
-      img: 'rich.png?v=2',
+      img: 'rich.png?v=3',
       palette: { body: '#5aa84a', body2: '#245c1e', accent: '#ffd85c', led: '#fff6cf' }
     }
   ];

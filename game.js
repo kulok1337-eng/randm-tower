@@ -751,21 +751,6 @@
     c.rotate(style.tilt);
     c.translate(-cx, -cy);
 
-    // --- Портальный след под летящим огурчиком ---
-    if (opts.beam) {
-      c.save();
-      c.globalAlpha = 0.5;
-      c.strokeStyle = '#7fb84a';
-      c.lineWidth = 2;
-      // Три расходящихся дуги — компактный портальный намёк
-      for (var bi = 1; bi <= 3; bi++) {
-        c.globalAlpha = 0.3 / bi;
-        c.beginPath();
-        c.ellipse(cx, y + h + 6 + bi * 5, w * 0.26 * bi * 0.7, 3 * bi, 0, 0, Math.PI * 2);
-        c.stroke();
-      }
-      c.restore();
-    }
 
     // --- Хвостик от плодоножки ---
     if (style.hasStem && h > 26) {
@@ -1473,7 +1458,7 @@
       game.streak++;
       taskAdd('perfect', 1);
       if (game.streak > game.bestStreak) game.bestStreak = game.streak;
-      game.gems += 2;
+      /* идеальное попадание больше не даёт отдельных кристаллов */
 
       var bonus = 0;
       if (game.streak % 3 === 0) {
@@ -1523,12 +1508,14 @@
     taskAdd('floors', game.score, true);
     if (game.score % 30 === 0) {
       if (addPickle()) {
-        spawnPopup('🥒 В БАНКУ!', '#4c9a2a', 0.2);
+        showJarPop('В БАНКУ!');
+      } else {
+        showJarPop('БАНКА ПОЛНА');
       }
     }
     // Кристаллы капают медленно: за обычную установку — ничего,
     // за «ИДЕАЛЬНО!» — 2, плюс 1 за каждые 5 этажей.
-    if (game.score % 5 === 0) game.gems += 1;
+    game.gems += 1;   // 1 кристалл за этаж
     if (game.score > profile.best) {
       profile.best = game.score;
       game.newBest = true;
@@ -1706,20 +1693,12 @@
       drawBlockContact(b.x, y, b.w, h, i);
     }
 
-    // --- Летящий девайс + «прицел» на верхнем этаже ---
+    // --- Летящий девайс ---
     if (game.moving) {
       var m = game.moving;
       var my = worldToScreenY(m.y + game.blockH);
 
-      var shadowY = worldToScreenY(m.base + game.blockH);
-      c.save();
-      c.globalAlpha = 0.25;
-      c.fillStyle = '#8fbf5a';
-      roundRect(c, m.x, shadowY, m.w, 4, 2);
-      c.fill();
-      c.restore();
-
-      drawDevice(m.x, my, m.w, game.blockH, m.style, { glow: 16, beam: true });
+      drawDevice(m.x, my, m.w, game.blockH, m.style, { glow: 16 });
     }
 
     // --- Обломки ---
@@ -1814,6 +1793,7 @@
     jarPending: document.getElementById('jarPending'),
     jarRate: document.getElementById('jarRate'),
     jarBadge: document.getElementById('jarBadge'),
+    jarPop: document.getElementById('jarPop'),
     screenTasks: document.getElementById('screenTasks'),
     btnTasks: document.getElementById('btnTasks'),
     btnTasksBack: document.getElementById('btnTasksBack'),
@@ -1983,12 +1963,28 @@
       cell.className = 'jar-cell' + (i < profile.jar ? ' full' : '');
       if (i < profile.jar) {
         var img = document.createElement('img');
-        img.src = 'classic.png?v=2';
+        img.src = 'classic.png?v=3';
         img.alt = '';
         cell.appendChild(img);
       }
       el.jarGrid.appendChild(cell);
     }
+  }
+
+  var jarPopTimer = null;
+  function showJarPop(text) {
+    if (!el.jarPop) return;
+    var label = el.jarPop.querySelector('.jar-pop-text');
+    if (label) label.textContent = text || 'В БАНКУ!';
+    el.jarPop.classList.remove('hidden', 'play');
+    void el.jarPop.offsetWidth;
+    el.jarPop.classList.add('play');
+    if (jarPopTimer) clearTimeout(jarPopTimer);
+    jarPopTimer = setTimeout(function () {
+      el.jarPop.classList.add('hidden');
+      el.jarPop.classList.remove('play');
+    }, 1800);
+    SFX.perfect();
   }
 
   function refreshJarBadge() {
@@ -2009,9 +2005,9 @@
      ЕЖЕДНЕВНЫЕ ЗАДАНИЯ
      ========================================================================== */
   var TASK_DEFS = [
-    { id: 'perfect', title: '10 идеальных попаданий', need: 10, reward: 120 },
-    { id: 'floors', title: '20 этажей за одну игру', need: 20, reward: 150 },
-    { id: 'blocks', title: '40 блоков за день', need: 40, reward: 100 }
+    { id: 'perfect', title: '20 идеальных попаданий', need: 20, reward: 150 },
+    { id: 'floors', title: '30 этажей за одну игру', need: 30, reward: 200 },
+    { id: 'blocks', title: '80 блоков за день', need: 80, reward: 150 }
   ];
 
   function todayKey() {
