@@ -157,7 +157,9 @@
     sound: 'dragtower.sound',
     board: 'dragtower.board',
     jar: 'dragtower.jar',
-    jarAt: 'dragtower.jarAt'
+    jarAt: 'dragtower.jarAt',
+    theme: 'dragtower.theme',
+    tasks: 'dragtower.tasks'
   };
 
   function loadNum(key, fallback) {
@@ -188,7 +190,13 @@
     try { window.localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* ignore */ }
   }
 
-  var settings = { sound: loadBool(STORE_KEYS.sound, true) };
+  var settings = {
+    sound: loadBool(STORE_KEYS.sound, true),
+    theme: (function () {
+      try { return window.localStorage.getItem(STORE_KEYS.theme) === 'dark' ? 'dark' : 'light'; }
+      catch (e) { return 'light'; }
+    })()
+  };
 
   var profile = {
     best: loadNum(STORE_KEYS.best, 0),
@@ -565,7 +573,7 @@
      6. СОСТОЯНИЕ ИГРЫ
      ========================================================================== */
 
-  var STATE = { MENU: 'menu', PLAY: 'play', OVER: 'over', BOARD: 'board', FRIENDS: 'friends', SKINS: 'skins', JAR: 'jar' };
+  var STATE = { MENU: 'menu', PLAY: 'play', OVER: 'over', BOARD: 'board', FRIENDS: 'friends', SKINS: 'skins', JAR: 'jar', TASKS: 'tasks' };
   var PHASE = { MOVING: 'moving', DROPPING: 'dropping', FALLING_OUT: 'fallingOut' };
 
   var game = {
@@ -1144,8 +1152,75 @@
     c.restore();
   }
 
+  function drawNightSky(time) {
+    var c = ctx;
+
+    var g = c.createLinearGradient(0, 0, 0, VIEW.h);
+    g.addColorStop(0, '#182a40');
+    g.addColorStop(0.45, '#22405c');
+    g.addColorStop(0.8, '#2b4a63');
+    g.addColorStop(1, '#223641');
+    c.fillStyle = g;
+    c.fillRect(0, 0, VIEW.w, VIEW.h);
+
+    // звёзды
+    for (var i = 0; i < 46; i++) {
+      var stx = ((i * 97) % 100) / 100 * VIEW.w;
+      var sty = (((i * 61) % 100) / 100 * VIEW.h * 0.72 + game.camera * 0.01) % (VIEW.h * 0.8);
+      var tw = 0.4 + 0.6 * Math.abs(Math.sin(time * 0.0011 + i * 1.7));
+      c.globalAlpha = 0.25 + 0.6 * tw;
+      c.fillStyle = '#eaf3ff';
+      c.beginPath();
+      c.arc(stx, sty, 1.0 + (i % 3) * 0.5, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 1;
+
+    // луна
+    var mx = VIEW.w * 0.82;
+    var my = VIEW.h * 0.13 + game.camera * 0.02;
+    var mr = Math.min(VIEW.w, VIEW.h) * 0.07;
+    var glow = c.createRadialGradient(mx, my, 0, mx, my, mr * 3.4);
+    glow.addColorStop(0, 'rgba(214, 232, 255, 0.5)');
+    glow.addColorStop(0.4, 'rgba(190, 214, 246, 0.22)');
+    glow.addColorStop(1, 'rgba(190, 214, 246, 0)');
+    c.fillStyle = glow;
+    c.beginPath();
+    c.arc(mx, my, mr * 3.4, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = '#eef5ff';
+    c.beginPath();
+    c.arc(mx, my, mr, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = 'rgba(196, 212, 232, 0.9)';
+    c.beginPath(); c.arc(mx - mr * 0.3, my - mr * 0.2, mr * 0.22, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(mx + mr * 0.25, my + mr * 0.3, mr * 0.16, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(mx + mr * 0.35, my - mr * 0.35, mr * 0.1, 0, Math.PI * 2); c.fill();
+
+    // облака — еле заметные
+    var span = VIEW.w + 260;
+    for (var k = 0; k < game.clouds.length; k++) {
+      var cl = game.clouds[k];
+      var cx2 = ((cl.x * span + time * cl.drift) % span) - 130;
+      var cy2 = cl.y * VIEW.h + game.camera * cl.depth * 0.22;
+      cy2 = cy2 % (VIEW.h + 200);
+      if (cy2 < -120) cy2 += VIEW.h + 200;
+      c.globalAlpha = 0.16;
+      drawCloud(cx2, cy2, cl.s, 1);
+      c.globalAlpha = 1;
+    }
+
+    drawSpores(time);
+    drawHills();
+  }
+
   function drawBackground(time) {
     var c = ctx;
+
+    if (settings.theme === 'dark') {
+      drawNightSky(time);
+      return;
+    }
 
     // Светлое небо: бледно-голубое сверху, тёплое у горизонта
     var g = c.createLinearGradient(0, 0, 0, VIEW.h);
@@ -1199,7 +1274,8 @@
     if (baseY < -160 || baseY > VIEW.h + 320) return;
 
     c.save();
-    c.fillStyle = 'rgba(158, 203, 160, 0.85)';
+    var night = settings.theme === 'dark';
+    c.fillStyle = night ? 'rgba(48, 76, 94, 0.9)' : 'rgba(158, 203, 160, 0.85)';
     c.beginPath();
     c.moveTo(0, baseY + 40);
     c.quadraticCurveTo(VIEW.w * 0.2, baseY - 50, VIEW.w * 0.42, baseY + 10);
@@ -1210,7 +1286,7 @@
     c.closePath();
     c.fill();
 
-    c.fillStyle = 'rgba(122, 182, 132, 0.9)';
+    c.fillStyle = night ? 'rgba(36, 60, 78, 0.95)' : 'rgba(122, 182, 132, 0.9)';
     c.beginPath();
     c.moveTo(0, baseY + 62);
     c.quadraticCurveTo(VIEW.w * 0.3, baseY - 8, VIEW.w * 0.55, baseY + 48);
@@ -1221,7 +1297,7 @@
     c.fill();
 
     // травинки на ближнем холме
-    c.strokeStyle = 'rgba(96, 152, 92, 0.7)';
+    c.strokeStyle = night ? 'rgba(74, 114, 100, 0.7)' : 'rgba(96, 152, 92, 0.7)';
     c.lineWidth = 2;
     c.lineCap = 'round';
     for (var g = 0; g < 14; g++) {
@@ -1385,6 +1461,8 @@
       return;
     }
 
+    taskAdd('blocks', 1);
+
     // ---- ИДЕАЛЬНОЕ ПОПАДАНИЕ ----
     var isPerfect = Math.abs(delta) <= PERFECT_TOL + game.forgive / 2;
     var placedX, placedW;
@@ -1393,6 +1471,7 @@
       placedX = prev.x;
       placedW = prev.w;
       game.streak++;
+      taskAdd('perfect', 1);
       if (game.streak > game.bestStreak) game.bestStreak = game.streak;
       game.gems += 2;
 
@@ -1441,6 +1520,7 @@
     });
 
     game.score++;
+    taskAdd('floors', game.score, true);
     if (game.score % 30 === 0) {
       if (addPickle()) {
         spawnPopup('🥒 В БАНКУ!', '#4c9a2a', 0.2);
@@ -1733,6 +1813,13 @@
     jarCap: document.getElementById('jarCap'),
     jarPending: document.getElementById('jarPending'),
     jarRate: document.getElementById('jarRate'),
+    jarBadge: document.getElementById('jarBadge'),
+    screenTasks: document.getElementById('screenTasks'),
+    btnTasks: document.getElementById('btnTasks'),
+    btnTasksBack: document.getElementById('btnTasksBack'),
+    tasksList: document.getElementById('tasksList'),
+    tasksBadge: document.getElementById('tasksBadge'),
+    btnTheme: document.getElementById('btnTheme'),
     startBest: document.getElementById('startBest'),
     startGems: document.getElementById('startGems'),
 
@@ -1789,7 +1876,7 @@
   }
 
   function showScreen(target) {
-    [el.screenStart, el.screenOver, el.screenBoard, el.screenFriends, el.screenSkins, el.screenJar].forEach(function (s) {
+    [el.screenStart, el.screenOver, el.screenBoard, el.screenFriends, el.screenSkins, el.screenJar, el.screenTasks].forEach(function (s) {
       s.classList.toggle('hidden', s !== target);
     });
   }
@@ -1843,6 +1930,8 @@
     el.tapHint.classList.add('hidden');
     updateMenuStats();
     updateSkinUI();
+    refreshJarBadge();
+    refreshTasksBadge();
     showScreen(el.screenStart);
   }
 
@@ -1863,6 +1952,10 @@
       profile.jarAt = Date.now();
       save(STORE_KEYS.jarAt, profile.jarAt);
     }
+    if (profile.jar >= JAR_MAX) {
+      showToast('Банка полна! Забери кристаллы');
+    }
+    refreshJarBadge();
     return true;
   }
 
@@ -1898,12 +1991,137 @@
     }
   }
 
+  function refreshJarBadge() {
+    if (!el.jarBadge) return;
+    el.jarBadge.classList.toggle('hidden', jarPending() < 1);
+  }
+
   function openJar() {
     game.state = STATE.JAR;
     el.hud.classList.add('hidden');
     el.tapHint.classList.add('hidden');
     renderJar();
+    refreshJarBadge();
     showScreen(el.screenJar);
+  }
+
+  /* ==========================================================================
+     ЕЖЕДНЕВНЫЕ ЗАДАНИЯ
+     ========================================================================== */
+  var TASK_DEFS = [
+    { id: 'perfect', title: '10 идеальных попаданий', need: 10, reward: 120 },
+    { id: 'floors', title: '20 этажей за одну игру', need: 20, reward: 150 },
+    { id: 'blocks', title: '40 блоков за день', need: 40, reward: 100 }
+  ];
+
+  function todayKey() {
+    var d = new Date();
+    return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+  }
+
+  function loadTasks() {
+    var t = loadJSON(STORE_KEYS.tasks, null);
+    if (!t || t.date !== todayKey()) {
+      t = { date: todayKey(), progress: { perfect: 0, floors: 0, blocks: 0 }, claimed: [] };
+      saveJSON(STORE_KEYS.tasks, t);
+    }
+    if (!t.progress) t.progress = { perfect: 0, floors: 0, blocks: 0 };
+    if (!t.claimed) t.claimed = [];
+    return t;
+  }
+
+  var tasksState = loadTasks();
+
+  function taskAdd(id, value, isMax) {
+    if (isMax) {
+      tasksState.progress[id] = Math.max(tasksState.progress[id] || 0, value);
+    } else {
+      tasksState.progress[id] = (tasksState.progress[id] || 0) + value;
+    }
+    saveJSON(STORE_KEYS.tasks, tasksState);
+    refreshTasksBadge();
+  }
+
+  function taskDone(def) { return (tasksState.progress[def.id] || 0) >= def.need; }
+  function taskClaimed(def) { return tasksState.claimed.indexOf(def.id) >= 0; }
+
+  function refreshTasksBadge() {
+    if (!el.tasksBadge) return;
+    var ready = 0;
+    for (var i = 0; i < TASK_DEFS.length; i++) {
+      if (taskDone(TASK_DEFS[i]) && !taskClaimed(TASK_DEFS[i])) ready++;
+    }
+    el.tasksBadge.classList.toggle('hidden', ready === 0);
+  }
+
+  function renderTasks() {
+    if (!el.tasksList) return;
+    el.tasksList.innerHTML = '';
+    for (var i = 0; i < TASK_DEFS.length; i++) {
+      var def = TASK_DEFS[i];
+      var cur = Math.min(tasksState.progress[def.id] || 0, def.need);
+      var done = taskDone(def);
+      var claimed = taskClaimed(def);
+
+      var row = document.createElement('div');
+      row.className = 'task-row' + (claimed ? ' claimed' : '');
+
+      var head = document.createElement('div');
+      head.className = 'task-head';
+      head.innerHTML = '<span>' + def.title + '</span><span class="task-reward">+' + def.reward + ' ◆</span>';
+
+      var bar = document.createElement('div');
+      bar.className = 'task-bar';
+      var fill = document.createElement('i');
+      fill.style.width = Math.round(cur / def.need * 100) + '%';
+      bar.appendChild(fill);
+
+      var foot = document.createElement('div');
+      foot.className = 'task-foot';
+      foot.textContent = cur + ' / ' + def.need;
+
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-primary task-btn';
+      btn.textContent = claimed ? 'ПОЛУЧЕНО' : (done ? 'ЗАБРАТЬ' : 'В ПРОЦЕССЕ');
+      btn.disabled = claimed || !done;
+      (function (d) {
+        btn.addEventListener('click', function () { claimTask(d); });
+      })(def);
+
+      row.appendChild(head);
+      row.appendChild(bar);
+      row.appendChild(foot);
+      row.appendChild(btn);
+      el.tasksList.appendChild(row);
+    }
+  }
+
+  function claimTask(def) {
+    if (!taskDone(def) || taskClaimed(def)) return;
+    tasksState.claimed.push(def.id);
+    saveJSON(STORE_KEYS.tasks, tasksState);
+    profile.gems += def.reward;
+    save(STORE_KEYS.gems, profile.gems);
+    updateMenuStats();
+    if (typeof updateSkinUI === 'function') updateSkinUI();
+    renderTasks();
+    refreshTasksBadge();
+    SFX.ui();
+    showToast('Задание выполнено: +' + def.reward + ' ◆');
+  }
+
+  function openTasks() {
+    game.state = STATE.TASKS;
+    el.hud.classList.add('hidden');
+    el.tapHint.classList.add('hidden');
+    renderTasks();
+    showScreen(el.screenTasks);
+  }
+
+  function applyTheme() {
+    var night = settings.theme === 'dark';
+    document.body.classList.toggle('night', night);
+    if (el.btnTheme) el.btnTheme.textContent = night ? '☀️ День' : '🌙 Ночь';
   }
 
   // --- Экран скинов: превью, цены, выделение выбранного ---
@@ -2058,6 +2276,7 @@
   function refreshToggles() {
     el.btnSound.textContent = settings.sound ? '🔊 Звук: вкл' : '🔇 Звук: выкл';
     el.btnSound.setAttribute('aria-pressed', settings.sound ? 'true' : 'false');
+    applyTheme();
   }
 
   // --- Кнопки ---
@@ -2079,6 +2298,14 @@
     renderJar();
     SFX.ui();
     showToast(got > 0 ? 'Собрано ' + got + ' ◆' : 'Пока нечего собирать');
+  });
+  el.btnTasks.addEventListener('click', function () { SFX.ui(); openTasks(); });
+  el.btnTasksBack.addEventListener('click', function () { SFX.ui(); goMenu(); });
+  el.btnTheme.addEventListener('click', function () {
+    settings.theme = settings.theme === 'dark' ? 'light' : 'dark';
+    try { window.localStorage.setItem(STORE_KEYS.theme, settings.theme); } catch (e) {}
+    applyTheme();
+    SFX.ui();
   });
   el.btnInvite.addEventListener('click', function () { SFX.ui(); inviteFriend(); });
   el.btnCopyLink.addEventListener('click', function () { SFX.ui(); copyInviteLink(); });

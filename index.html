@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
@@ -58,7 +58,8 @@
       </button>
 
       <button id="btnBoard" class="btn btn-ghost">🏆 ЛИДЕРБОРД</button>
-      <button id="btnJar" class="btn btn-ghost">🥒 БАНКА</button>
+      <button id="btnJar" class="btn btn-ghost">🥒 БАНКА<span id="jarBadge" class="badge hidden"></span></button>
+      <button id="btnTasks" class="btn btn-ghost">📋 ЗАДАНИЯ<span id="tasksBadge" class="badge hidden"></span></button>
       <button id="btnFriends" class="btn btn-ghost">👽 ДРУЗЬЯ</button>
 
       <div class="start-stats">
@@ -68,6 +69,7 @@
 
       <div class="settings-row">
         <button id="btnSound" class="btn btn-ghost" aria-pressed="true">🔊 Звук: вкл</button>
+        <button id="btnTheme" class="btn btn-ghost">🌙 Ночь</button>
       </div>
 
       <p class="disclaimer">
@@ -163,6 +165,19 @@
 
       <button id="btnJarCollect" class="btn btn-primary">СОБРАТЬ</button>
       <button id="btnJarBack" class="btn btn-ghost">НАЗАД</button>
+    </div>
+  </div>
+
+  <!-- ===== Ежедневные задания ===== -->
+  <div id="screenTasks" class="screen hidden">
+    <div class="panel panel-wide">
+      <h2 class="over-title">ЗАДАНИЯ</h2>
+      <p class="board-note">
+        Три задания каждый день. Прогресс сохраняется, награда — кристаллы.
+        Новые задания появляются в полночь.
+      </p>
+      <div id="tasksList" class="tasks-list"></div>
+      <button id="btnTasksBack" class="btn btn-ghost">НАЗАД</button>
     </div>
   </div>
 

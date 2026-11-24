@@ -42,6 +42,15 @@
       palette: { body: '#8fc63d', body2: '#4a7016', accent: '#d9f08a', led: '#f4ffd6' }
     },
     {
+      id: 'mint',
+      bonus: 4,
+      name: 'Мятный Рик',
+      desc: 'Освежает и слегка холодит. Пахнет жвачкой.',
+      price: 150,
+      img: 'mint.png?v=2',
+      palette: { body: '#4fbfa8', body2: '#1f6b5c', accent: '#c9fff1', led: '#f0fffa' }
+    },
+    {
       id: 'ice',
       bonus: 8,
       name: 'Крио-Рик',
@@ -85,15 +94,6 @@
       price: 2700,
       img: 'robot.png?v=2',
       palette: { body: '#b9c3cc', body2: '#5b6770', accent: '#e8f1f5', led: '#ffffff' }
-    },
-    {
-      id: 'mint',
-      bonus: 28,
-      name: 'Мятный Рик',
-      desc: 'Освежает и слегка холодит. Пахнет жвачкой.',
-      price: 1800,
-      img: 'mint.png?v=2',
-      palette: { body: '#4fbfa8', body2: '#1f6b5c', accent: '#c9fff1', led: '#f0fffa' }
     },
     {
       id: 'magma',

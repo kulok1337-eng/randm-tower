@@ -159,7 +159,8 @@ html, body {
 
 /* Панель-«планшет из лаборатории»: толстый контур и смещённая тень */
 .panel {
-  width: min(440px, 100%);
+  width: calc(100vw - 32px);
+  max-width: 440px;
   padding: 26px 22px;
   border-radius: 20px;
   text-align: center;
@@ -490,7 +491,7 @@ html, body {
 /* ============================================================
    Скины Огурчика Рика
    ============================================================ */
-.panel-wide { width: min(520px, 100%); }
+.panel-wide { width: calc(100vw - 32px); max-width: 520px; }
 
 /* Полоска текущего скина в главном меню */
 .skin-strip {
@@ -704,3 +705,83 @@ body.tg .screen {
   margin-bottom: 12px;
   color: var(--text);
 }
+/* ============================================================
+   Бейджи, задания, ночная тема
+   ============================================================ */
+.btn, .skin-strip { position: relative; }
+
+.badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e04b3a;
+  box-shadow: 0 0 0 2px #fff;
+}
+body.night .badge { box-shadow: 0 0 0 2px #203243; }
+
+.tasks-list { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 14px; }
+
+.task-row {
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 10px 12px 12px;
+}
+.task-row.claimed { opacity: 0.6; }
+.task-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--text);
+}
+.task-reward { color: var(--gem); white-space: nowrap; }
+.task-bar {
+  height: 10px;
+  border-radius: 6px;
+  background: #e3edf2;
+  margin: 8px 0 5px;
+  overflow: hidden;
+}
+.task-bar i { display: block; height: 100%; background: var(--portal); border-radius: 6px; }
+.task-foot { font-size: 12px; font-weight: 700; color: var(--text-dim); }
+.task-btn { width: 100%; margin-top: 8px; font-size: 14px; padding: 10px; }
+.task-btn:disabled { opacity: 0.55; }
+
+/* ---------- ночная тема ---------- */
+body.night {
+  --bg-0: #1b2c3e;
+  --bg-1: #16232f;
+  --text: #e9f2f8;
+  --text-dim: #9fb6c6;
+  --ink: #0b1620;
+  --gem: #5fd0c6;
+}
+body.night .screen {
+  background:
+    radial-gradient(120% 75% at 50% 8%, rgba(120, 170, 220, 0.10) 0%, rgba(18, 30, 44, 0.45) 62%),
+    rgba(18, 30, 44, 0.5);
+}
+body.night .panel {
+  background: linear-gradient(170deg, #26394c, #203243);
+  border-color: #0e1a24;
+}
+body.night .btn-ghost {
+  background: #2b4053;
+  color: #e9f2f8;
+  border-color: #0e1a24;
+}
+body.night .skin-card { background: #26394c; }
+body.night .skin-card.locked { background: #223447; }
+body.night .skin-card.selected { background: #2d4a44; }
+body.night .jar-cell { background: #223447; }
+body.night .jar-cell.full { background: #2c4636; }
+body.night .task-row { background: #2a3f52; border-color: #0e1a24; }
+body.night .task-bar { background: #1b2b39; }
+body.night .board-note, body.night .rules, body.night .tagline { color: #a9c0d0; }
+body.night .stat { color: #dbe8f1; }
+body.night .logo-drag { color: #8fd45a; }
