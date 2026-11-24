@@ -58,6 +58,7 @@
       </button>
 
       <button id="btnBoard" class="btn btn-ghost">🏆 ЛИДЕРБОРД</button>
+      <button id="btnJar" class="btn btn-ghost">🥒 БАНКА</button>
       <button id="btnFriends" class="btn btn-ghost">👽 ДРУЗЬЯ</button>
 
       <div class="start-stats">
@@ -143,6 +144,25 @@
       <button id="btnFriendsBack" class="btn btn-ghost">НАЗАД</button>
 
       <p class="disclaimer" id="refNote"></p>
+    </div>
+  </div>
+
+  <!-- ===== Банка: солёные огурчики и пассивный доход ===== -->
+  <div id="screenJar" class="screen hidden">
+    <div class="panel panel-wide">
+      <h2 class="over-title">БАНКА</h2>
+      <div class="skin-balance">◆ <b id="jarPending">0</b> накопилось</div>
+      <p class="board-note">
+        Каждый солёный огурчик даёт <b id="jarRate">0</b> ◆ в час.
+        Копится до 8 часов. Огурчик падает в банку каждые 30 этажей.
+      </p>
+
+      <div id="jarGrid" class="jar-grid"></div>
+
+      <div class="jar-stats">В банке: <b id="jarCount">0</b> / <b id="jarCap">12</b></div>
+
+      <button id="btnJarCollect" class="btn btn-primary">СОБРАТЬ</button>
+      <button id="btnJarBack" class="btn btn-ghost">НАЗАД</button>
     </div>
   </div>
 

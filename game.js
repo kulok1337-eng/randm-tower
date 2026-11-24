@@ -155,7 +155,9 @@
     best: 'dragtower.best',
     gems: 'dragtower.gems',
     sound: 'dragtower.sound',
-    board: 'dragtower.board'
+    board: 'dragtower.board',
+    jar: 'dragtower.jar',
+    jarAt: 'dragtower.jarAt'
   };
 
   function loadNum(key, fallback) {
@@ -190,8 +192,15 @@
 
   var profile = {
     best: loadNum(STORE_KEYS.best, 0),
-    gems: loadNum(STORE_KEYS.gems, 0)
+    gems: loadNum(STORE_KEYS.gems, 0),
+    jar: loadNum(STORE_KEYS.jar, 0),
+    jarAt: loadNum(STORE_KEYS.jarAt, 0)
   };
+
+  /* Банка: каждый огурчик даёт пассивные кристаллы */
+  var JAR_MAX = 12;
+  var JAR_RATE = 3;       // кристаллов в час за один огурчик
+  var JAR_CAP_H = 8;      // максимум часов накопления
 
   /* ==========================================================================
      2. TELEGRAM WEBAPP SDK
@@ -556,7 +565,7 @@
      6. СОСТОЯНИЕ ИГРЫ
      ========================================================================== */
 
-  var STATE = { MENU: 'menu', PLAY: 'play', OVER: 'over', BOARD: 'board', FRIENDS: 'friends', SKINS: 'skins' };
+  var STATE = { MENU: 'menu', PLAY: 'play', OVER: 'over', BOARD: 'board', FRIENDS: 'friends', SKINS: 'skins', JAR: 'jar' };
   var PHASE = { MOVING: 'moving', DROPPING: 'dropping', FALLING_OUT: 'fallingOut' };
 
   var game = {
@@ -1308,6 +1317,8 @@
     // Блок сделан выше и уже обычного: иначе девайс с картриджем не читается.
     game.blockH = Math.max(42, Math.min(VIEW.h * 0.075, 62));
     game.startW = Math.max(120, Math.min(VIEW.w * 0.5, 212));
+    // бонус скина не меняет внешний вид — только прощает промах
+    game.forgive = (activeSkin() && activeSkin().bonus) || 0;
     game.groundY = Math.max(80, VIEW.h * 0.16 + VIEW.safeBottom);
 
     game.tower = [];
@@ -1375,7 +1386,7 @@
     }
 
     // ---- ИДЕАЛЬНОЕ ПОПАДАНИЕ ----
-    var isPerfect = Math.abs(delta) <= PERFECT_TOL;
+    var isPerfect = Math.abs(delta) <= PERFECT_TOL + game.forgive / 2;
     var placedX, placedW;
 
     if (isPerfect) {
@@ -1390,7 +1401,7 @@
         bonus = WIDTH_BONUS;
         spawnPopup('ШИРЕ! +' + WIDTH_BONUS, '#c9861e', 0.35);
       }
-      game.nextWidth = Math.min(game.startW, placedW + bonus);
+      game.nextWidth = Math.min(game.startW, placedW + bonus + game.forgive);
 
       spawnPopup('ИДЕАЛЬНО!', '#4c9a2a', 0);
       spawnPerfectParticles(placedX + placedW / 2, worldToScreenY(cur.base + game.blockH));
@@ -1400,7 +1411,7 @@
       placedX = overlapLeft;
       placedW = overlap;
       game.streak = 0;
-      game.nextWidth = placedW;
+      game.nextWidth = Math.min(game.startW, placedW + game.forgive);
 
       var cutX, cutW;
       if (delta > 0) { cutX = overlapRight; cutW = (cur.x + cur.w) - overlapRight; }
@@ -1430,6 +1441,11 @@
     });
 
     game.score++;
+    if (game.score % 30 === 0) {
+      if (addPickle()) {
+        spawnPopup('🥒 В БАНКУ!', '#4c9a2a', 0.2);
+      }
+    }
     // Кристаллы капают медленно: за обычную установку — ничего,
     // за «ИДЕАЛЬНО!» — 2, плюс 1 за каждые 5 этажей.
     if (game.score % 5 === 0) game.gems += 1;
@@ -1708,6 +1724,15 @@
     screenOver: document.getElementById('screenOver'),
     screenBoard: document.getElementById('screenBoard'),
     screenFriends: document.getElementById('screenFriends'),
+    screenJar: document.getElementById('screenJar'),
+    btnJar: document.getElementById('btnJar'),
+    btnJarBack: document.getElementById('btnJarBack'),
+    btnJarCollect: document.getElementById('btnJarCollect'),
+    jarGrid: document.getElementById('jarGrid'),
+    jarCount: document.getElementById('jarCount'),
+    jarCap: document.getElementById('jarCap'),
+    jarPending: document.getElementById('jarPending'),
+    jarRate: document.getElementById('jarRate'),
     startBest: document.getElementById('startBest'),
     startGems: document.getElementById('startGems'),
 
@@ -1764,7 +1789,7 @@
   }
 
   function showScreen(target) {
-    [el.screenStart, el.screenOver, el.screenBoard, el.screenFriends, el.screenSkins].forEach(function (s) {
+    [el.screenStart, el.screenOver, el.screenBoard, el.screenFriends, el.screenSkins, el.screenJar].forEach(function (s) {
       s.classList.toggle('hidden', s !== target);
     });
   }
@@ -1819,6 +1844,66 @@
     updateMenuStats();
     updateSkinUI();
     showScreen(el.screenStart);
+  }
+
+  /* ==========================================================================
+     БАНКА ОГУРЦОВ
+     ========================================================================== */
+  function jarPending() {
+    if (!profile.jar || !profile.jarAt) return 0;
+    var hours = Math.min((Date.now() - profile.jarAt) / 3600000, JAR_CAP_H);
+    return Math.floor(hours * JAR_RATE * profile.jar);
+  }
+
+  function addPickle() {
+    if (profile.jar >= JAR_MAX) return false;
+    profile.jar++;
+    save(STORE_KEYS.jar, profile.jar);
+    if (!profile.jarAt) {
+      profile.jarAt = Date.now();
+      save(STORE_KEYS.jarAt, profile.jarAt);
+    }
+    return true;
+  }
+
+  function claimJar() {
+    var pending = jarPending();
+    if (pending <= 0) return 0;
+    profile.gems += pending;
+    profile.jarAt = Date.now();
+    save(STORE_KEYS.gems, profile.gems);
+    save(STORE_KEYS.jarAt, profile.jarAt);
+    updateMenuStats();
+    updateSkinUI();
+    return pending;
+  }
+
+  function renderJar() {
+    if (!el.jarGrid) return;
+    el.jarCount.textContent = profile.jar;
+    el.jarCap.textContent = JAR_MAX;
+    el.jarPending.textContent = jarPending();
+    el.jarRate.textContent = profile.jar * JAR_RATE;
+    el.jarGrid.innerHTML = '';
+    for (var i = 0; i < JAR_MAX; i++) {
+      var cell = document.createElement('div');
+      cell.className = 'jar-cell' + (i < profile.jar ? ' full' : '');
+      if (i < profile.jar) {
+        var img = document.createElement('img');
+        img.src = 'classic.png?v=2';
+        img.alt = '';
+        cell.appendChild(img);
+      }
+      el.jarGrid.appendChild(cell);
+    }
+  }
+
+  function openJar() {
+    game.state = STATE.JAR;
+    el.hud.classList.add('hidden');
+    el.tapHint.classList.add('hidden');
+    renderJar();
+    showScreen(el.screenJar);
   }
 
   // --- Экран скинов: превью, цены, выделение выбранного ---
@@ -1987,6 +2072,14 @@
   el.btnBoardBack.addEventListener('click', function () { SFX.ui(); goMenu(); });
   el.btnFriends.addEventListener('click', function () { SFX.ui(); openFriends(); });
   el.btnFriendsBack.addEventListener('click', function () { SFX.ui(); goMenu(); });
+  el.btnJar.addEventListener('click', function () { SFX.ui(); openJar(); });
+  el.btnJarBack.addEventListener('click', function () { SFX.ui(); goMenu(); });
+  el.btnJarCollect.addEventListener('click', function () {
+    var got = claimJar();
+    renderJar();
+    SFX.ui();
+    showToast(got > 0 ? 'Собрано ' + got + ' ◆' : 'Пока нечего собирать');
+  });
   el.btnInvite.addEventListener('click', function () { SFX.ui(); inviteFriend(); });
   el.btnCopyLink.addEventListener('click', function () { SFX.ui(); copyInviteLink(); });
   el.btnSkins.addEventListener('click', function () { SFX.ui(); openSkins(); });

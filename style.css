@@ -668,3 +668,39 @@ body.tg .screen {
   .hud-score-value { font-size: clamp(34px, 11vw, 56px); }
   .board-list { max-height: 34vh; }
 }
+
+/* ============================================================
+   Банка огурцов
+   ============================================================ */
+.jar-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 6px 0 14px;
+}
+.jar-cell {
+  aspect-ratio: 1 / 1;
+  border: 2px dashed rgba(23, 48, 63, 0.35);
+  border-radius: 12px;
+  background: #f4fbff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.jar-cell.full {
+  border-style: solid;
+  border-color: var(--portal);
+  background: #eaf6dc;
+}
+.jar-cell img {
+  width: 96%;
+  height: 96%;
+  object-fit: contain;
+}
+.jar-stats {
+  text-align: center;
+  font-weight: 800;
+  margin-bottom: 12px;
+  color: var(--text);
+}
