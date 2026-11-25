@@ -3409,11 +3409,10 @@ body.night .board-title { background: rgba(224, 163, 60, 0.25); color: #ffd98a; 
     return pending;
   }
 
-  var JAR_ART = { cosmic: 1, gold: 1, ice: 1, robot: 1, magma: 1, rich: 1 };
-  function jarSkinImg(id) {
-    // для этих скинов есть отдельная «баночная» моделька
-    if (JAR_ART[id]) return 'jar-' + id + '.png?v=1';
-    return 'jar-pickle.png?v=2';
+  // в банке используются только эти шесть моделей, по кругу
+  var JAR_MODELS = ['cosmic', 'gold', 'ice', 'robot', 'magma', 'rich'];
+  function jarSkinImg(index) {
+    return 'jar-' + JAR_MODELS[index % JAR_MODELS.length] + '.png?v=1';
   }
 
   function renderJar() {
@@ -3457,7 +3456,7 @@ body.night .board-title { background: rgba(224, 163, 60, 0.25); color: #ffd98a; 
           this.dataset.fb = '2';
           this.src = 'jar-pickle.png?v=2';
         };
-        img.src = jarSkinImg(profile.jarSkins[i]);
+        img.src = jarSkinImg(i);
         cell.appendChild(img);
       }
       el.jarGrid.appendChild(cell);
@@ -3496,6 +3495,8 @@ body.night .board-title { background: rgba(224, 163, 60, 0.25); color: #ffd98a; 
     if (!el.jarPop) return;
     var label = el.jarPop.querySelector('.jar-pop-text');
     if (label) label.textContent = text || 'В БАНКУ!';
+    var popImg = el.jarPop.querySelector('.jar-pop-pickle');
+    if (popImg) popImg.src = jarSkinImg(Math.floor(Math.random() * 6));
     el.jarPop.classList.remove('hidden', 'play');
     void el.jarPop.offsetWidth;
     el.jarPop.classList.add('play');
