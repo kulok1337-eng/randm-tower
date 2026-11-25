@@ -1016,7 +1016,7 @@ body.night .board-title { background: rgba(224, 163, 60, 0.25); color: #ffd98a; 
   <!-- ===== Всплывающая банка на 30-м этаже (не блокирует игру) ===== -->
   <div id="jarPop" class="jar-pop hidden" aria-hidden="true">
     <div class="jar-pop-glass">
-      <img class="jar-pop-pickle" src="jar-pickle.png?v=2" alt="" />
+      <img class="jar-pop-pickle" src="jar-pickle.png?v=2" alt="" onerror="this.onerror=null;this.src='classic.png?v=3'" />
     </div>
     <div class="jar-pop-text">В БАНКУ!</div>
   </div>
@@ -3447,8 +3447,17 @@ body.night .board-title { background: rgba(224, 163, 60, 0.25); color: #ffd98a; 
       cell.className = 'jar-cell' + (i < n ? ' full' : '');
       if (i < n) {
         var img = document.createElement('img');
-        img.src = jarSkinImg(profile.jarSkins[i]);
         img.alt = '';
+        img.onerror = function () {
+          if (this.dataset.fb === '2') {
+            this.onerror = null;
+            this.src = 'classic.png?v=3';
+            return;
+          }
+          this.dataset.fb = '2';
+          this.src = 'jar-pickle.png?v=2';
+        };
+        img.src = jarSkinImg(profile.jarSkins[i]);
         cell.appendChild(img);
       }
       el.jarGrid.appendChild(cell);
