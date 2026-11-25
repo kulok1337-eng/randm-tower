@@ -1,243 +1,349 @@
-"""Бот, который публикует в канал решения об актировках в Норильске."""
+import hashlib
 import json
 import logging
+import os
+import re
 import sqlite3
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
 
-import config as cfg
-from parser import fingerprint, format_report, load_source
+import config as C
+from parser import load_source
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
+TZ = timezone(timedelta(hours=C.NORILSK_TZ_OFFSET_HOURS))
+Path(C.DATA_DIR).mkdir(parents=True, exist_ok=True)
+db = sqlite3.connect(Path(C.DATA_DIR) / "state.sqlite3")
+db.execute("CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+db.commit()
+session = requests.Session()
+session.headers["User-Agent"] = "NorilskAktirovkaBot/2.0"
+
+source_status = {}   # name -> строка статуса
+last_check = {"ts": None}
 
 
-class Bot:
-    def __init__(self):
-        root = Path(cfg.DATA_DIR)
-        root.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(root / "state.sqlite3")
-        self.db.execute(
-            "CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+# ---------- состояние ----------
+def get_state(key, default=None):
+    row = db.execute("SELECT value FROM state WHERE key=?", (key,)).fetchone()
+    return row[0] if row else default
+
+
+def set_state(key, value):
+    db.execute("INSERT OR REPLACE INTO state(key,value) VALUES(?,?)", (key, str(value)))
+    db.commit()
+
+
+def is_dry():
+    return get_state("dry_run", "true" if C.DRY_RUN else "false") == "true"
+
+
+def is_paused():
+    return get_state("paused", "false") == "true"
+
+
+def now():
+    return datetime.now(TZ)
+
+
+# ---------- Telegram ----------
+def tg(method, payload=None, timeout=35):
+    try:
+        r = session.post(
+            f"https://api.telegram.org/bot{C.BOT_TOKEN}/{method}",
+            json=payload or {}, timeout=timeout,
         )
-        self.db.commit()
-        self.web = requests.Session()
-        self.tg = requests.Session()
+    except requests.RequestException:
+        raise RuntimeError("Ошибка соединения с Telegram") from None
+    try:
+        data = r.json()
+    except ValueError:
+        raise RuntimeError(f"Telegram вернул HTTP {r.status_code}") from None
+    if not data.get("ok"):
+        raise RuntimeError("Telegram: " + data.get("description", "ошибка"))
+    return data["result"]
 
-    # --- состояние -----------------------------------------------------
-    def get(self, key):
-        row = self.db.execute("SELECT value FROM state WHERE key=?", (key,)).fetchone()
-        return row[0] if row else None
 
-    def put(self, key, value):
-        self.db.execute("INSERT OR REPLACE INTO state VALUES (?, ?)", (key, str(value)))
-        self.db.commit()
+def send(chat_id, text, markup=None):
+    p = {"chat_id": chat_id, "text": text[:4000],
+         "link_preview_options": {"is_disabled": True}}
+    if markup:
+        p["reply_markup"] = markup
+    return tg("sendMessage", p)
 
-    # --- Telegram ------------------------------------------------------
-    def api(self, method, payload):
-        last_error = None
-        for attempt in range(3):
-            try:
-                response = self.tg.post(
-                    TELEGRAM_API.format(token=cfg.BOT_TOKEN, method=method),
-                    json=payload,
-                    timeout=35,
-                )
-            except requests.RequestException:
-                last_error = "Нет соединения с Telegram"
-                time.sleep(2 ** attempt)
-                continue
 
-            if response.status_code == 429:
-                try:
-                    retry_after = int(
-                        response.json().get("parameters", {}).get("retry_after", 5)
-                    )
-                except (ValueError, TypeError, AttributeError):
-                    retry_after = 5
-                time.sleep(min(max(retry_after, 1), 60))
-                last_error = "Telegram ограничил частоту запросов"
-                continue
+def edit(chat_id, message_id, text, markup=None):
+    p = {"chat_id": chat_id, "message_id": message_id, "text": text[:4000],
+         "link_preview_options": {"is_disabled": True}}
+    if markup:
+        p["reply_markup"] = markup
+    try:
+        tg("editMessageText", p)
+    except RuntimeError as e:
+        if "not modified" not in str(e):
+            raise
 
-            try:
-                data = response.json()
-            except ValueError:
-                raise RuntimeError(f"Telegram вернул HTTP {response.status_code}") from None
-            if not data.get("ok"):
-                raise RuntimeError("Telegram: " + str(data.get("description", "ошибка")))
-            return data["result"]
 
-        raise RuntimeError(last_error or "Telegram недоступен")
-
-    def send(self, chat, text):
-        return self.api(
-            "sendMessage",
-            {
-                "chat_id": chat,
-                "text": text[:4000],
-                "link_preview_options": {"is_disabled": True},
-            },
-        )
-
-    def notify(self, key, text):
-        key = "notice:" + key
-        if time.time() - float(self.get(key) or 0) < 21600:
+def notify_admins(text, key=None, cooldown=6 * 3600):
+    if key:
+        if time.time() - float(get_state("n:" + key, 0)) < cooldown:
             return
-        delivered = False
-        for admin in cfg.ADMIN_IDS:
-            try:
-                self.send(admin, text)
-                delivered = True
-            except RuntimeError as error:
-                logging.error("Уведомление %s не доставлено: %s", admin, error)
-        if delivered:
-            self.put(key, time.time())
+        set_state("n:" + key, time.time())
+    for a in C.ADMIN_IDS:
+        try:
+            send(a, text)
+        except Exception as e:
+            logging.error("Админ %s недоступен: %s", a, e)
 
-    # --- проверка ------------------------------------------------------
-    def check(self):
-        now = datetime.now(cfg.NORILSK_TZ)
-        today = now.date().isoformat()
-        reports = []
-        for source in cfg.SOURCES:
-            try:
-                report = load_source(self.web, source)
-            except (requests.RequestException, ValueError) as error:
-                detail = str(error) if isinstance(error, ValueError) else type(error).__name__
-                logging.warning("Источник %s: %s", source["name"], detail)
-                self.notify(
-                    "source:" + source["name"],
-                    f"Не удалось проверить «{source['name']}».\n"
-                    f"Причина: {detail}\n"
-                    "Это не означает, что актировки нет.\n" + source["url"],
-                )
+
+# ---------- отчёты ----------
+def norm(s):
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def fingerprint(rep):
+    data = {"date": rep["date"], "shift": rep["shift"],
+            "d": {k: norm(v).lower().replace("ё", "е") for k, v in rep["districts"].items()}}
+    return hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+def fmt(rep, updated=False):
+    d = datetime.strptime(rep["date"], "%Y-%m-%d").strftime("%d.%m.%Y")
+    lines = ["Уточнение об актировках" if updated else "Актировки в Норильске",
+             f"Дата: {d}", f"Смена: {rep['shift']}", ""]
+    for name, _ in C.DISTRICTS:
+        v = rep["districts"][name]
+        if v.lower().strip(" .") == "нет":
+            v = "актировки нет"
+        lines.append(f"{name} — {v}")
+    lines += ["", f"Источник: {rep['source']['name']}", rep["source"]["url"]]
+    return "\n".join(lines)
+
+
+def collect():
+    """Загружает оба источника. Возвращает список отчётов за сегодня."""
+    today = now().date()
+    reports = []
+    for src in C.SOURCES:
+        try:
+            rep = load_source(session, src)
+            rd = datetime.strptime(rep["date"], "%Y-%m-%d").date()
+            if rd != today:
+                source_status[src["name"]] = f"устарело: найдена дата {rep['date']}"
                 continue
+            source_status[src["name"]] = f"ок: {rep['date']}, смена {rep['shift']}"
+            reports.append(rep)
+        except Exception as e:
+            msg = str(e) if isinstance(e, ValueError) else type(e).__name__
+            source_status[src["name"]] = f"ошибка: {msg}"
+            logging.warning("%s: %s", src["name"], msg)
+            notify_admins(
+                f"Не удалось проверить «{src['name']}»: {msg}\n"
+                "Это не означает, что актировки нет.", key="src:" + src["name"])
+    return reports
 
-            if report["date"] != today:
-                logging.info("%s: пропуск даты %s", source["name"], report["date"])
-                # Резерв часто обновляется с задержкой — не засоряем уведомления.
-                # До 08:00 решение на сегодня может быть ещё не опубликовано.
-                if (
-                    source["official"]
-                    and now.hour >= 8
-                    and cfg.ACTIVE_FROM <= now.hour < cfg.ACTIVE_TO
-                ):
-                    self.notify(
-                        "stale:" + source["name"],
-                        f"На сайте «{source['name']}» нет решения за сегодня. "
-                        f"Найдена дата {report['date']}. Старые данные не опубликованы.",
-                    )
-                continue
-            reports.append(report)
 
-        if not reports:
+def check_and_publish(force_to=None):
+    last_check["ts"] = now()
+    reports = collect()
+    if not reports:
+        return None
+    chosen = reports[0]
+    for other in reports[1:]:
+        if other["shift"] == chosen["shift"] and fingerprint(other) != fingerprint(chosen):
+            notify_admins("Источники расходятся.\nИспользуется официальный сайт.\n\n"
+                          + fmt(chosen) + "\n\nВторой источник:\n" + fmt(other),
+                          key=f"conf:{chosen['date']}:{chosen['shift']}")
+    if force_to:
+        send(force_to, fmt(chosen))
+        return chosen
+
+    dry = is_dry()
+    mode = "test" if dry else "live"
+    key = f"report:{mode}:{C.CHANNEL_ID}:{chosen['date']}:{chosen['shift']}"
+    digest = fingerprint(chosen)
+    prev = get_state(key)
+    if prev == digest or get_state(f"{key}:seen:{digest}"):
+        return chosen
+    text = fmt(chosen, updated=prev is not None)
+    if dry:
+        for a in C.ADMIN_IDS:
+            send(a, "ТЕСТ — в канал не отправлено\n\n" + text)
+    else:
+        send(C.CHANNEL_ID, text)
+        notify_admins("Опубликовано в канал:\n\n" + text)
+    set_state(key, digest)
+    set_state(f"{key}:seen:{digest}", "1")
+    return chosen
+
+
+# ---------- админ-панель ----------
+def kb(rows):
+    return {"inline_keyboard": [[{"text": t, "callback_data": d} for t, d in r] for r in rows]}
+
+
+def panel_text():
+    lines = ["Панель администратора", ""]
+    lines.append("Режим: " + ("ТЕСТ (только админам)" if is_dry() else "РАБОЧИЙ (публикация в канал)"))
+    lines.append("Автопроверка: " + ("на паузе" if is_paused() else "включена"))
+    lc = last_check["ts"]
+    lines.append("Последняя проверка: " + (lc.strftime("%d.%m %H:%M") if lc else "ещё не было"))
+    lines.append("Время в Норильске: " + now().strftime("%d.%m %H:%M"))
+    lines.append("Канал: " + C.CHANNEL_ID)
+    return "\n".join(lines)
+
+
+def panel_markup():
+    return kb([
+        [("Проверить сейчас", "check"), ("Статус сайтов", "status")],
+        [("Показать актировки", "show"), ("Отправить в канал вручную", "push")],
+        [("Режим: тест/рабочий", "mode"), ("Пауза/пуск", "pause")],
+        [("Проверить доступ к каналу", "chan"), ("Сбросить историю", "reset")],
+        [("Обновить панель", "panel")],
+    ])
+
+
+def status_text():
+    lines = ["Состояние источников:"]
+    for s in C.SOURCES:
+        lines.append(f"- {s['name']}: {source_status.get(s['name'], 'не проверялся')}")
+    return "\n".join(lines)
+
+
+def show_panel(chat_id, message_id=None):
+    if message_id:
+        edit(chat_id, message_id, panel_text(), panel_markup())
+    else:
+        send(chat_id, panel_text(), panel_markup())
+
+
+def handle_callback(cb):
+    uid = cb["from"]["id"]
+    chat_id = cb["message"]["chat"]["id"]
+    mid = cb["message"]["message_id"]
+    if uid not in C.ADMIN_IDS:
+        tg("answerCallbackQuery", {"callback_query_id": cb["id"], "text": "Нет доступа"})
+        return
+    data = cb["data"]
+    answer = ""
+    try:
+        if data == "panel":
+            pass
+        elif data == "check":
+            rep = check_and_publish()
+            answer = "Проверено" if rep else "Сегодняшнего решения нет"
+        elif data == "status":
+            collect()
+            send(chat_id, status_text())
+        elif data == "show":
+            reps = collect()
+            send(chat_id, fmt(reps[0]) if reps else "Сегодняшнего решения на сайтах нет.\n\n" + status_text())
+        elif data == "push":
+            edit(chat_id, mid, "Отправить актуальную сводку в канал сейчас?",
+                 kb([[("Да, отправить", "push_yes"), ("Отмена", "panel")]]))
+            tg("answerCallbackQuery", {"callback_query_id": cb["id"]})
             return
-
-        chosen = reports[0]
-        for other in reports[1:]:
-            if other["shift"] == chosen["shift"] and fingerprint(other) != fingerprint(chosen):
-                self.notify(
-                    f"conflict:{today}:{chosen['shift']}",
-                    "Источники расходятся. Приоритет — официальный сайт.\n\n"
-                    + format_report(chosen)
-                    + "\n\nВторой источник:\n"
-                    + format_report(other),
-                )
-
-        mode = "test" if cfg.DRY_RUN else "live"
-        channel_key = cfg.CHANNEL_ID or "test"
-        key = f"report:{mode}:{channel_key}:{today}:{chosen['shift']}"
-        previous_raw = self.get(key)
-        previous = json.loads(previous_raw) if previous_raw else None
-        if previous and previous["official"] and not chosen["source"]["official"]:
-            logging.info("Резерв не заменяет официальное решение")
+        elif data == "push_yes":
+            rep = check_and_publish(force_to=C.CHANNEL_ID)
+            answer = "Отправлено в канал" if rep else "Нет сегодняшнего решения"
+        elif data == "mode":
+            set_state("dry_run", "false" if is_dry() else "true")
+        elif data == "pause":
+            set_state("paused", "false" if is_paused() else "true")
+        elif data == "chan":
+            me = tg("getMe")
+            m = tg("getChatMember", {"chat_id": C.CHANNEL_ID, "user_id": me["id"]})
+            ok = m.get("status") in ("administrator", "creator")
+            answer = "Доступ есть: " + m.get("status") if ok else "Бот не админ канала"
+        elif data == "reset":
+            edit(chat_id, mid, "Сбросить историю публикаций? Бот может повторно опубликовать сегодняшнее решение.",
+                 kb([[("Да, сбросить", "reset_yes"), ("Отмена", "panel")]]))
+            tg("answerCallbackQuery", {"callback_query_id": cb["id"]})
             return
+        elif data == "reset_yes":
+            db.execute("DELETE FROM state WHERE key LIKE 'report:%'")
+            db.commit()
+            answer = "История сброшена"
+    except Exception as e:
+        answer = "Ошибка: " + str(e)[:150]
+    tg("answerCallbackQuery", {"callback_query_id": cb["id"], "text": answer[:190]})
+    edit(chat_id, mid, panel_text(), panel_markup())
 
-        digest = fingerprint(chosen)
-        official = bool(chosen["source"]["official"])
-        if previous and previous["digest"] == digest:
-            if official and not previous["official"]:
-                previous["official"] = True
-                self.put(key, json.dumps(previous))
-            logging.info("Изменений нет")
-            return
 
-        text = format_report(chosen, updated=previous is not None)
-        if cfg.DRY_RUN:
-            text = "ТЕСТ — в канал не отправлено\n\n" + text
-            targets = cfg.ADMIN_IDS
-        else:
-            targets = [cfg.CHANNEL_ID]
-        message_id = None
-        delivered = False
-        for target in targets:
+def handle_message(msg):
+    uid = msg.get("from", {}).get("id")
+    chat = msg["chat"]["id"]
+    text = (msg.get("text") or "").strip()
+    if chat < 0:
+        return
+    if uid not in C.ADMIN_IDS:
+        if text.startswith("/start"):
+            send(chat, "Этот бот публикует актировки в канале. Управление доступно только администраторам.")
+        return
+    if text.startswith(("/start", "/panel", "/menu")):
+        show_panel(chat)
+    elif text.startswith("/status"):
+        send(chat, status_text())
+    elif text.startswith("/check"):
+        rep = check_and_publish()
+        send(chat, "Проверено.\n\n" + (fmt(rep) if rep else "Сегодняшнего решения нет.\n\n" + status_text()))
+    else:
+        send(chat, "Команды: /panel — панель, /status — источники, /check — проверить сейчас.")
+
+
+# ---------- главный цикл ----------
+def interval():
+    h = now().hour
+    return C.DAY_INTERVAL if C.ACTIVE_FROM <= h < C.ACTIVE_TO else C.NIGHT_INTERVAL
+
+
+def main():
+    if not C.BOT_TOKEN or not C.CHANNEL_ID or not C.ADMIN_IDS:
+        raise RuntimeError("Заполни BOT_TOKEN, CHANNEL_ID и ADMIN_IDS в переменных окружения")
+    me = tg("getMe")
+    logging.info("Бот @%s запущен, DRY_RUN=%s", me["username"], is_dry())
+    try:
+        tg("deleteWebhook")
+    except Exception:
+        pass
+    try:
+        m = tg("getChatMember", {"chat_id": C.CHANNEL_ID, "user_id": me["id"]})
+        chan = "доступ к каналу есть (" + m.get("status", "?") + ")"
+    except Exception as e:
+        chan = "нет доступа к каналу: " + str(e)
+    notify_admins("Бот запущен. " + chan + "\nОткрой /panel", key="startup", cooldown=60)
+
+    offset = None
+    next_check = 0
+    while True:
+        if not is_paused() and time.time() >= next_check:
             try:
-                result = self.send(target, text)
-                message_id = result.get("message_id", message_id)
-                delivered = True
-            except RuntimeError as error:
-                logging.error("Сводка не отправлена %s: %s", target, error)
-        if not delivered:
-            raise RuntimeError("Не удалось отправить сводку ни одному получателю")
-        self.put(
-            key,
-            json.dumps(
-                {"digest": digest, "official": official, "message_id": message_id}
-            ),
-        )
-        logging.info("Сводка отправлена, режим %s", mode)
-
-    # --- цикл ----------------------------------------------------------
-    def run(self):
-        me = self.api("getMe", {})
-        logging.info("Бот @%s запущен. DRY_RUN=%s", me.get("username"), cfg.DRY_RUN)
-        logging.info("База: %s", str(Path(cfg.DATA_DIR).resolve() / "state.sqlite3"))
-        if not cfg.DRY_RUN:
-            chat = self.api("getChat", {"chat_id": cfg.CHANNEL_ID})
-            if chat.get("type") != "channel":
-                raise RuntimeError("CHANNEL_ID должен указывать на канал, а не на группу")
-            member = self.api(
-                "getChatMember", {"chat_id": cfg.CHANNEL_ID, "user_id": me["id"]}
-            )
-            if member.get("status") not in ("administrator", "creator") or not member.get(
-                "can_post_messages"
-            ):
-                raise RuntimeError("У бота нет прав администратора на публикацию в канале")
-        self.notify(
-            "startup:" + str(cfg.DRY_RUN),
-            "Бот актировок запущен.\n"
-            + (
-                "Тестовый режим: сводки приходят только тебе."
-                if cfg.DRY_RUN
-                else "Рабочий режим: публикация в канал включена."
-            ),
-        )
-        while True:
+                check_and_publish()
+            except Exception as e:
+                logging.error("Ошибка проверки: %s", e)
+                notify_admins("Ошибка проверки или отправки: " + str(e)[:500], key="cycle")
+            next_check = time.time() + interval()
+        try:
+            updates = tg("getUpdates", {"offset": offset, "timeout": 20,
+                                        "allowed_updates": ["message", "callback_query"]}, timeout=40)
+        except Exception as e:
+            logging.warning("getUpdates: %s", e)
+            time.sleep(5)
+            continue
+        for u in updates:
+            offset = u["update_id"] + 1
             try:
-                self.check()
-            except Exception as error:  # noqa: BLE001 - цикл не должен падать
-                logging.exception("Ошибка цикла")
-                self.notify("cycle", "Ошибка проверки или отправки: " + str(error)[:500])
-            now = datetime.now(cfg.NORILSK_TZ)
-            active = cfg.ACTIVE_FROM <= now.hour < cfg.ACTIVE_TO
-            interval = cfg.DAY_INTERVAL if active else cfg.NIGHT_INTERVAL
-            morning = now.replace(hour=cfg.ACTIVE_FROM, minute=0, second=0, microsecond=0)
-            if now < morning:
-                interval = min(interval, max(1, int((morning - now).total_seconds())))
-            logging.info("Следующая проверка через %s секунд", interval)
-            time.sleep(interval)
+                if "callback_query" in u:
+                    handle_callback(u["callback_query"])
+                else:
+                    handle_message(u["message"])
+            except Exception as e:
+                logging.error("Ошибка обработки: %s", e)
 
 
 if __name__ == "__main__":
-    if not cfg.BOT_TOKEN or not cfg.ADMIN_IDS:
-        raise SystemExit("Не задан BOT_TOKEN или ADMIN_ID")
-    if not cfg.DRY_RUN and not cfg.CHANNEL_ID:
-        raise SystemExit("Для публикации в канал задай CHANNEL_ID")
-    if not 0 <= cfg.ACTIVE_FROM < cfg.ACTIVE_TO <= 23:
-        raise SystemExit("Требуется 0 <= ACTIVE_FROM < ACTIVE_TO <= 23")
-    if not cfg.SOURCES:
-        raise SystemExit("Список SOURCES пуст")
-    Bot().run()
+    main()

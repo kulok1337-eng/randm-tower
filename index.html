@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
@@ -11,7 +11,1002 @@
   <!-- Официальный SDK Telegram Mini App -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-  <link rel="stylesheet" href="style.css?v=6" />
+  <style>
+/* ============================================================
+   DRAG TOWER — стили интерфейса
+   Визуальный стиль: мультяшный «межпространственный лаборант»
+   в духе Рика и Морти, но сдержанный:
+   приглушённый сине-зелёный фон, портальный зелёный акцент,
+   горчичный жёлтый, толстые чёрные контуры как в мультике.
+   Весь игровой мир рисуется на Canvas, здесь — HUD и экраны.
+   ============================================================ */
+
+:root {
+  /* Светлая мультяшная палитра: голубое небо, белые панели, чёрный контур */
+  --bg-0: #eaf7ff;        /* светлое небо */
+  --bg-1: #d7eeff;
+  --portal: #5fb43a;      /* сочный зелёный — главный акцент */
+  --portal-dim: #3f7d22;
+  --mustard: #e0a33c;     /* горчичный */
+  --slate: #6d93ab;
+  --flask: #2fa8a0;       /* бирюза кристаллов */
+  --ink: #17303f;         /* контуры, «чернила» мультика */
+  --text: #17303f;
+  --text-dim: #5b7a8a;
+  --gem: #2fa8a0;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg-0);
+  color: var(--text);
+  font-family: "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+#game {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 1;
+}
+
+.hidden { display: none !important; }
+
+/* ============================================================
+   HUD — верхняя панель во время игры
+   ============================================================ */
+.hud {
+  position: fixed;
+  top: calc(var(--safe-top) + 10px);
+  left: calc(var(--safe-left) + 12px);
+  right: calc(var(--safe-right) + 12px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+/* Крупный счёт с «мультяшной» чёрной обводкой вместо неонового свечения */
+.hud-score-value {
+  font-size: clamp(44px, 16vw, 86px);
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: 1px;
+  text-align: center;
+  color: #17303f;
+  -webkit-text-stroke: 4px #ffffff;
+  paint-order: stroke fill;
+  text-shadow: 0 4px 0 rgba(23, 48, 63, 0.12);
+}
+
+.hud-score-label {
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.hud-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Чипы-«наклейки» с толстым контуром */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px solid var(--ink);
+  box-shadow: 0 2px 0 rgba(23, 48, 63, 0.2);
+}
+
+.chip .ico { font-size: 13px; }
+.chip-gem    .ico { color: var(--flask); }
+.chip-best   .ico { color: var(--mustard); }
+.chip-streak .ico { color: var(--portal); }
+
+/* Серия идеальных попаданий — портальное мерцание */
+.chip-streak.hot {
+  border-color: var(--portal);
+  animation: chipPulse 0.7s ease-in-out infinite alternate;
+}
+@keyframes chipPulse {
+  from { box-shadow: 0 2px 0 rgba(10,15,18,0.6); }
+  to   { box-shadow: 0 2px 0 rgba(10,15,18,0.6), 0 0 14px rgba(143, 198, 61, 0.7); }
+}
+
+/* ============================================================
+   Экраны
+   ============================================================ */
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: calc(var(--safe-top) + 16px) calc(var(--safe-right) + 16px)
+           calc(var(--safe-bottom) + 16px) calc(var(--safe-left) + 16px);
+  background:
+    radial-gradient(120% 75% at 50% 8%, rgba(146, 205, 246, 0.12) 0%, rgba(234, 247, 255, 0.4) 62%),
+    rgba(234, 247, 255, 0.4);
+  animation: screenIn 0.22s ease-out;
+  overflow-y: auto;
+}
+
+@keyframes screenIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Панель-«планшет из лаборатории»: толстый контур и смещённая тень */
+.panel {
+  width: min(440px, calc(100vw - 32px));
+  padding: 26px 22px;
+  border-radius: 20px;
+  text-align: center;
+  background: linear-gradient(170deg, #ffffff, #eef8ff);
+  border: 3px solid var(--ink);
+  margin: auto 0;
+  box-shadow:
+    0 7px 0 rgba(23, 48, 63, 0.22),
+    inset 0 2px 0 #ffffff;
+}
+
+/* --- Логотип --- */
+.logo {
+  font-size: clamp(34px, 11vw, 54px);
+  font-weight: 900;
+  letter-spacing: 2px;
+  line-height: 1.02;
+  margin-bottom: 6px;
+}
+.logo-drag {
+  display: block;
+  color: var(--mustard);
+  -webkit-text-stroke: 4px var(--ink);
+  paint-order: stroke fill;
+  transform: rotate(-1.5deg);
+}
+.logo-tower {
+  display: block;
+  color: var(--portal);
+  -webkit-text-stroke: 4px var(--ink);
+  paint-order: stroke fill;
+  transform: rotate(1deg);
+  text-shadow: 0 3px 0 rgba(255, 255, 255, 0.9);
+}
+
+.tagline {
+  font-size: 14px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--portal);
+  margin-bottom: 14px;
+}
+
+.rules {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  margin-bottom: 18px;
+}
+.rules b { color: var(--text); }
+
+/* --- Кнопки: крупные, «наклеенные», с нижней тенью --- */
+.btn {
+  display: block;
+  width: 100%;
+  min-height: 56px;
+  margin-top: 10px;
+  padding: 15px 20px;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.2s ease;
+}
+
+.btn:active {
+  transform: translateY(4px);
+  box-shadow: 0 1px 0 rgba(23, 48, 63, 0.22) !important;
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, #a7d95a, var(--portal));
+  box-shadow: 0 5px 0 rgba(10, 15, 18, 0.85);
+}
+.btn-primary:hover { filter: brightness(1.07); }
+
+.btn-ghost {
+  background: #ffffff;
+  color: var(--text);
+  font-size: 15px;
+  min-height: 48px;
+  letter-spacing: 1px;
+  box-shadow: 0 4px 0 rgba(23, 48, 63, 0.22);
+}
+
+.settings-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.settings-row .btn { margin-top: 0; }
+.btn-ghost[aria-pressed="false"] {
+  opacity: 0.6;
+  background: #e6eef3;
+}
+
+.start-stats {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  margin-top: 18px;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+.start-stats b { color: var(--text); }
+.start-stats .ico { color: var(--flask); }
+
+.disclaimer {
+  margin-top: 18px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: rgba(143, 163, 154, 0.6);
+}
+
+/* ============================================================
+   Экран проигрыша
+   ============================================================ */
+.over-title {
+  font-size: clamp(24px, 7.5vw, 36px);
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--mustard);
+  -webkit-text-stroke: 4px var(--ink);
+  paint-order: stroke fill;
+  margin-bottom: 18px;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.result-card {
+  padding: 14px 6px;
+  border-radius: 12px;
+  background: #f2f9ff;
+  border: 2px solid var(--ink);
+  box-shadow: 0 3px 0 rgba(23, 48, 63, 0.18);
+}
+.result-value {
+  font-size: clamp(24px, 8vw, 32px);
+  font-weight: 900;
+  color: #fff;
+  -webkit-text-stroke: 2.5px var(--ink);
+  paint-order: stroke fill;
+}
+.result-label {
+  margin-top: 4px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.new-best {
+  margin: 6px 0 10px;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  color: var(--mustard);
+  text-shadow: 0 2px 0 #ffffff;
+  animation: bestBlink 0.9s ease-in-out infinite alternate;
+}
+@keyframes bestBlink {
+  from { opacity: 0.6; transform: scale(0.98); }
+  to   { opacity: 1;   transform: scale(1.04); }
+}
+
+.over-total {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+.over-total b { color: var(--flask); }
+
+/* ============================================================
+   Лидерборд
+   ============================================================ */
+.board-note {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+
+.board-list {
+  list-style: none;
+  margin-bottom: 16px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.board-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  margin-bottom: 7px;
+  border-radius: 10px;
+  background: #f6fbff;
+  border: 2px solid var(--ink);
+  font-size: 14px;
+  text-align: left;
+}
+
+/* Свой результат подсвечиваем портальным зелёным */
+.board-row.me {
+  background: #e8f6dc;
+  border-color: var(--portal);
+}
+
+.board-rank {
+  width: 26px;
+  flex: none;
+  font-weight: 900;
+  color: var(--slate);
+}
+.board-row:nth-child(1) .board-rank { color: var(--mustard); }
+.board-row:nth-child(2) .board-rank { color: #c7d2d8; }
+.board-row:nth-child(3) .board-rank { color: #b08050; }
+
+.board-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.board-score {
+  flex: none;
+  font-weight: 900;
+  color: var(--portal);
+}
+
+.board-empty {
+  padding: 22px 10px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* ============================================================
+   Подсказка «тапни»
+   ============================================================ */
+.tap-hint {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 42px);
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 9px 20px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.95);
+  border: 2px solid var(--ink);
+  box-shadow: 0 3px 0 rgba(23, 48, 63, 0.18);
+  pointer-events: none;
+  animation: hintFloat 1.4s ease-in-out infinite alternate;
+}
+@keyframes hintFloat {
+  from { opacity: 0.5; transform: translate(-50%, 4px); }
+  to   { opacity: 1;   transform: translate(-50%, -4px); }
+}
+
+/* ============================================================
+   Экран «Друзья» (рефералы)
+   ============================================================ */
+.ref-reward {
+  margin-bottom: 14px;
+  padding: 14px 10px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(143, 198, 61, 0.22), rgba(143, 198, 61, 0.06));
+  border: 2px solid var(--portal);
+}
+.ref-reward-value {
+  font-size: clamp(28px, 9vw, 38px);
+  font-weight: 900;
+  color: var(--portal);
+  -webkit-text-stroke: 3px var(--ink);
+  paint-order: stroke fill;
+}
+.ref-reward-label {
+  margin-top: 2px;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* На этом экране карточек две, а не три */
+.ref-grid { grid-template-columns: repeat(2, 1fr); }
+
+/* ============================================================
+   Toast — короткое уведомление вместо alert()
+   ============================================================ */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 90px);
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: 86vw;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--text);
+  background: #ffffff;
+  border: 2px solid var(--portal);
+  box-shadow: 0 4px 0 rgba(23, 48, 63, 0.2);
+  animation: toastIn 0.25s ease-out;
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ============================================================
+   Скины Огурчика Рика
+   ============================================================ */
+.panel-wide { width: min(520px, calc(100vw - 32px)); }
+
+/* Полоска текущего скина в главном меню */
+.skin-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 7px 12px;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 4px 0 rgba(23, 48, 63, 0.22);
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink);
+  text-align: left;
+  transition: transform 0.08s ease;
+}
+.skin-strip:active { transform: translateY(3px); box-shadow: none; }
+
+.skin-strip-img {
+  width: 78px;
+  height: 40px;
+  object-fit: contain;
+  flex: none;
+}
+
+.skin-strip-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.skin-strip-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.skin-strip-name {
+  font-size: 15px;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.skin-strip-arrow {
+  flex: none;
+  font-size: 26px;
+  font-weight: 900;
+  color: var(--portal-dim);
+}
+
+/* Крупное превью выбранного скина */
+.skin-current {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f1fae8, #dff1d1);
+}
+.skin-current-img {
+  width: 52%;
+  max-width: 210px;
+  height: auto;
+  aspect-ratio: 3 / 1;
+  object-fit: contain;
+}
+.skin-current-info { text-align: left; }
+.skin-current-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.skin-current-name {
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+/* Сетка карточек */
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  max-height: 42vh;
+  overflow-y: auto;
+  padding: 3px;
+  margin-bottom: 16px;
+}
+
+.skin-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px 7px;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 3px 0 rgba(23, 48, 63, 0.16);
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+.skin-card:active { transform: translateY(3px); box-shadow: none; }
+
+.skin-card.selected {
+  border-color: var(--portal);
+  background: #f0fae6;
+  box-shadow:
+    0 0 0 3px rgba(95, 180, 58, 0.25),
+    0 3px 0 rgba(23, 48, 63, 0.16);
+}
+
+.skin-card-img {
+  width: 100%;
+  height: 64px;
+  object-fit: contain;
+  display: block;
+}
+
+.skin-card-name {
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.skin-badge {
+  min-height: 13px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: var(--portal-dim);
+}
+.skin-badge-price { color: #b8791c; }
+
+.skin-balance {
+  margin: -6px 0 10px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--flask);
+}
+.skin-balance b { color: var(--ink); font-size: 18px; }
+
+.skin-card.locked { background: #f7fafc; }
+.skin-card.locked .skin-card-img { opacity: 0.9; }
+.skin-card.locked .skin-card-name { color: #49616f; }
+
+/* Уважаем системную настройку «меньше анимации» */
+/* В Telegram сверху висит шапка — добавляем отступ, чтобы логотип не прятался */
+body.tg .screen {
+  padding-top: calc(var(--safe-top) + 60px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen, .new-best, .chip-streak.hot, .tap-hint { animation: none !important; }
+  .btn, .skin-card, .skin-strip { transition: none !important; }
+}
+
+@media (max-height: 560px) {
+  .rules { display: none; }
+  .disclaimer { font-size: 9.5px; margin-top: 12px; }
+  .panel { padding: 18px 16px; }
+  .hud-score-value { font-size: clamp(34px, 11vw, 56px); }
+  .board-list { max-height: 34vh; }
+}
+
+/* ============================================================
+   Банка огурцов
+   ============================================================ */
+.jar-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 6px 0 14px;
+}
+.jar-cell {
+  aspect-ratio: 1 / 1;
+  border: 2px dashed rgba(23, 48, 63, 0.35);
+  border-radius: 12px;
+  background: #f4fbff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.jar-cell.full {
+  border-style: solid;
+  border-color: var(--portal);
+  background: #eaf6dc;
+}
+.jar-cell img {
+  width: 96%;
+  height: 96%;
+  object-fit: contain;
+}
+.jar-stats {
+  text-align: center;
+  font-weight: 800;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+/* ============================================================
+   Бейджи, задания, ночная тема
+   ============================================================ */
+.btn, .skin-strip { position: relative; }
+
+.badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e04b3a;
+  box-shadow: 0 0 0 2px #fff;
+}
+body.night .badge { box-shadow: 0 0 0 2px #203243; }
+
+.tasks-list { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 14px; }
+
+.task-row {
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 10px 12px 12px;
+}
+.task-row.claimed { opacity: 0.6; }
+.task-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--text);
+}
+.task-reward { color: var(--gem); white-space: nowrap; }
+.task-bar {
+  height: 10px;
+  border-radius: 6px;
+  background: #e3edf2;
+  margin: 8px 0 5px;
+  overflow: hidden;
+}
+.task-bar i { display: block; height: 100%; background: var(--portal); border-radius: 6px; }
+.task-foot { font-size: 12px; font-weight: 700; color: var(--text-dim); }
+.task-btn { width: 100%; margin-top: 8px; font-size: 14px; padding: 10px; }
+.task-btn:disabled { opacity: 0.55; }
+
+/* ---------- ночная тема ---------- */
+body.night {
+  --bg-0: #1b2c3e;
+  --bg-1: #16232f;
+  --text: #e9f2f8;
+  --text-dim: #9fb6c6;
+  --ink: #0b1620;
+  --gem: #5fd0c6;
+}
+body.night .screen {
+  background:
+    radial-gradient(120% 75% at 50% 8%, rgba(120, 170, 220, 0.10) 0%, rgba(18, 30, 44, 0.45) 62%),
+    rgba(18, 30, 44, 0.5);
+}
+body.night .panel {
+  background: linear-gradient(170deg, #26394c, #203243);
+  border-color: #0e1a24;
+}
+body.night .btn-ghost {
+  background: #2b4053;
+  color: #e9f2f8;
+  border-color: #0e1a24;
+}
+body.night .skin-card { background: #26394c; }
+body.night .skin-card.locked { background: #223447; }
+body.night .skin-card.selected { background: #2d4a44; }
+body.night .jar-cell { background: #223447; }
+body.night .jar-cell.full { background: #2c4636; }
+body.night .task-row { background: #2a3f52; border-color: #0e1a24; }
+body.night .task-bar { background: #1b2b39; }
+body.night .board-note, body.night .rules, body.night .tagline { color: #a9c0d0; }
+body.night .stat { color: #dbe8f1; }
+body.night .logo-drag { color: #8fd45a; }
+body.night .board-row { background: #2a3f52; border-color: #0e1a24; color: #e9f2f8; }
+body.night .board-row.me { background: #2f4a3a; border-color: var(--portal); }
+body.night .board-rank { color: #9fb6c6; }
+body.night .board-row:nth-child(1) .board-rank { color: var(--mustard); }
+body.night .board-row:nth-child(2) .board-rank { color: #c7d2d8; }
+body.night .board-row:nth-child(3) .board-rank { color: #b08050; }
+body.night .board-name { color: #e9f2f8; }
+body.night .skin-strip { background: linear-gradient(180deg, #2b4053, #26394c); border-color: #0e1a24; }
+body.night .skin-strip-name { color: #e9f2f8; }
+body.night .skin-strip-label { color: #9fb6c6; }
+body.night .skin-strip-arrow { color: #8fd45a; }
+body.night .skin-balance, body.night .jar-stats { color: #e9f2f8; }
+body.night .toast { background: #2b4053; color: #e9f2f8; }
+body.night .skin-current { background: linear-gradient(180deg, #2b4053, #26394c); border-color: #0e1a24; }
+body.night .skin-current-name { color: #e9f2f8; }
+body.night .skin-current-label { color: #9fb6c6; }
+body.night .over-title { color: #f0e6c8; }
+body.night .skin-card .skin-name, body.night .skin-card .skin-price { color: #e9f2f8; }
+/* ============================================================
+   Всплывающая банка (30-й этаж)
+   ============================================================ */
+.jar-pop {
+  position: fixed;
+  left: 50%;
+  bottom: calc(120px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 40;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+}
+.jar-pop.play { animation: jarPopIn 1.8s ease-out forwards; }
+
+.jar-pop-glass {
+  width: 84px;
+  height: 96px;
+  border: 3px solid var(--ink);
+  border-radius: 10px 10px 18px 18px;
+  background: linear-gradient(180deg, rgba(190, 230, 255, 0.55), rgba(150, 205, 240, 0.85));
+  position: relative;
+  overflow: hidden;
+}
+.jar-pop-glass::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  right: -6px;
+  top: -8px;
+  height: 12px;
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+  background: #d9a94b;
+}
+.jar-pop-pickle {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  width: 78px;
+  transform: translateX(-50%);
+  animation: pickleDrop 1.8s ease-in-out forwards;
+}
+.jar-pop-text {
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  color: var(--portal-dim);
+  text-shadow: 0 2px 0 #fff;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  padding: 2px 8px;
+}
+body.night .jar-pop-text { background: #26394c; color: #cdf3b0; text-shadow: none; border-color: #0e1a24; }
+
+@keyframes jarPopIn {
+  0%   { opacity: 0; transform: translateY(16px) scale(0.9); }
+  12%  { opacity: 1; transform: translateY(0) scale(1); }
+  78%  { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-10px) scale(0.96); }
+}
+@keyframes pickleDrop {
+  0%   { transform: translate(-50%, -58px) rotate(-12deg); }
+  45%  { transform: translate(-50%, 0) rotate(4deg); }
+  60%  { transform: translate(-50%, -6px) rotate(-2deg); }
+  100% { transform: translate(-50%, 0) rotate(0deg); }
+}
+
+/* ---------- усиленная ночная тема (перекрываем белые плашки) ---------- */
+body.night .skin-strip,
+body.night .skin-current,
+body.night .board-row,
+body.night .result-card,
+body.night .jar-cell,
+body.night .task-row,
+body.night .skin-card {
+  background: #2a3f52 !important;
+  border-color: #0e1a24 !important;
+  color: #e9f2f8 !important;
+}
+body.night .board-row.me { background: #2f4a3a !important; border-color: var(--portal) !important; }
+body.night .skin-strip-name,
+body.night .skin-current-name,
+body.night .board-name,
+body.night .result-value,
+body.night .skin-card-name,
+body.night .task-head { color: #e9f2f8 !important; }
+body.night .board-rank,
+body.night .result-label,
+body.night .skin-strip-label,
+body.night .skin-current-label { color: #9fb6c6 !important; }
+body.night .board-score { color: #8fd45a !important; }
+body.night .task-bar { background: #1b2b39 !important; }
+/* ============================================================
+   Ночная тема: HUD читаемый (кристаллы, рекорд, серия)
+   ============================================================ */
+body.night .chip {
+  background: rgba(12, 22, 33, 0.78) !important;
+  border-color: #0b1620 !important;
+  color: #eaf3fa !important;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
+}
+body.night .chip .ico { color: inherit !important; }
+body.night .hud-score-value { color: #ffffff !important; text-shadow: 0 4px 0 rgba(0, 0, 0, 0.5); }
+body.night .hud-score-label { color: #d7e6f1 !important; }
+body.night .tap-hint { background: rgba(12, 22, 33, 0.85); color: #eaf3fa; }
+
+/* ============================================================
+   Ежедневная награда
+   ============================================================ */
+.daily-list {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 6px 0 14px;
+}
+.daily-card {
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  padding: 8px 4px;
+  background: #ffffff;
+  text-align: center;
+}
+.daily-card .daily-day { font-size: 11px; font-weight: 800; color: var(--text-dim); }
+.daily-card .daily-reward { font-size: 13px; font-weight: 900; color: var(--gem); margin-top: 2px; }
+.daily-card.done { background: #e8f6dc; opacity: 0.75; }
+.daily-card.today { background: #fdf3d4; box-shadow: 0 0 0 3px rgba(224, 163, 60, 0.35); }
+body.night .daily-card { background: #2a3f52; border-color: #0e1a24; }
+body.night .daily-card.done { background: #2f4a3a; }
+body.night .daily-card.today { background: #4a3f22; }
+
+/* ============================================================
+   Достижения
+   ============================================================ */
+.ach-row {
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 10px 12px 12px;
+}
+.ach-row.claimed { opacity: 0.6; }
+.ach-head { display: flex; justify-content: space-between; gap: 8px; font-weight: 800; font-size: 15px; }
+body.night .ach-row { background: #2a3f52; border-color: #0e1a24; }
+body.night .ach-head { color: #e9f2f8; }
+
+/* ============================================================
+   Апгрейды банки
+   ============================================================ */
+.jar-ups { margin: 10px 0 14px; border-top: 2px dashed rgba(23, 48, 63, 0.25); padding-top: 10px; }
+.jar-up-title { font-weight: 900; font-size: 13px; letter-spacing: 0.4px; color: var(--text-dim); margin-bottom: 8px; }
+.jar-up-lvl { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+.jar-more { font-size: 12px; color: var(--text-dim); margin: -6px 0 8px; }
+body.night .jar-ups { border-color: rgba(200, 220, 235, 0.2); }
+body.night .hud-score-value {
+  color: #ffffff !important;
+  -webkit-text-stroke: 3px #0b1620 !important;
+  text-shadow: none !important;
+}
+body.night .hud-score-label { color: #e3eff8 !important; text-shadow: 0 2px 0 rgba(0,0,0,0.6); }
+/* ============================================================
+   Титулы
+   ============================================================ */
+.title-strip {
+  margin: 2px 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: var(--text-dim);
+  text-align: center;
+}
+.board-title {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(224, 163, 60, 0.22);
+  border: 1px solid rgba(224, 163, 60, 0.6);
+  color: var(--mustard);
+  font-size: 10px;
+  font-weight: 900;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.title-btn { margin-top: 6px; font-size: 13px; }
+body.night .title-strip { color: #a9c0d0; }
+body.night .board-title { background: rgba(224, 163, 60, 0.25); color: #ffd98a; border-color: rgba(255, 217, 138, 0.5); }
+</style>
 </head>
 <body>
 
@@ -21,7 +1016,7 @@
   <!-- ===== Всплывающая банка на 30-м этаже (не блокирует игру) ===== -->
   <div id="jarPop" class="jar-pop hidden" aria-hidden="true">
     <div class="jar-pop-glass">
-      <img class="jar-pop-pickle" src="classic.png?v=3" alt="" />
+      <img class="jar-pop-pickle" src="jar-pickle.png?v=2" alt="" />
     </div>
     <div class="jar-pop-text">В БАНКУ!</div>
   </div>
@@ -68,8 +1063,11 @@
       <button id="btnBoard" class="btn btn-ghost">🏆 ЛИДЕРБОРД</button>
       <button id="btnJar" class="btn btn-ghost">🥒 БАНКА<span id="jarBadge" class="badge hidden"></span></button>
       <button id="btnTasks" class="btn btn-ghost">📋 ЗАДАНИЯ<span id="tasksBadge" class="badge hidden"></span></button>
+      <button id="btnDaily" class="btn btn-ghost">🎁 НАГРАДА ДНЯ<span id="dailyBadge" class="badge hidden"></span></button>
+      <button id="btnAch" class="btn btn-ghost">🏅 ДОСТИЖЕНИЯ</button>
       <button id="btnFriends" class="btn btn-ghost">👽 ДРУЗЬЯ</button>
 
+      <div class="title-strip" id="titleStrip">Титул не выбран</div>
       <div class="start-stats">
         <div class="stat"><span class="ico">★</span> Рекорд: <b id="startBest">0</b></div>
         <div class="stat"><span class="ico">◆</span> Кристаллы: <b id="startGems">0</b></div>
@@ -163,13 +1161,22 @@
       <h2 class="over-title">БАНКА</h2>
       <div class="skin-balance">◆ <b id="jarPending">0</b> накопилось</div>
       <p class="board-note">
-        Каждый солёный огурчик даёт <b id="jarRate">0</b> ◆ в час.
-        Копится до 8 часов. Огурчик падает в банку каждые 30 этажей.
+        Каждый огурчик даёт <b id="jarRateOne">2</b> ◆ в час.
+        Копится до <b id="jarCapH">8</b> часов, число огурчиков не ограничено.
+        Огурчик падает в банку каждые 35 этажей и сохраняет скин, с которым ты играл.
       </p>
 
       <div id="jarGrid" class="jar-grid"></div>
+      <div class="jar-more" id="jarMore"></div>
 
-      <div class="jar-stats">В банке: <b id="jarCount">0</b> / <b id="jarCap">12</b></div>
+      <div class="jar-stats">В банке: <b id="jarCount">0</b> / <b id="jarCap">∞</b> · всего <b id="jarRate">0</b> ◆/ч</div>
+
+      <div class="jar-ups">
+        <div class="jar-up-title">Апгрейды банки</div>
+        <button id="btnUpRate" class="btn btn-ghost">Скорость +1 ◆/ч — 400 ◆</button>
+        <button id="btnUpCap" class="btn btn-ghost">Накопление +4 ч — 300 ◆</button>
+        <div class="jar-up-lvl">Скорость: ур. <b id="jarRateLvl">0</b> · Накопление: ур. <b id="jarCapLvl">0</b></div>
+      </div>
 
       <button id="btnJarCollect" class="btn btn-primary">СОБРАТЬ</button>
       <button id="btnJarBack" class="btn btn-ghost">НАЗАД</button>
@@ -186,6 +1193,31 @@
       </p>
       <div id="tasksList" class="tasks-list"></div>
       <button id="btnTasksBack" class="btn btn-ghost">НАЗАД</button>
+    </div>
+  </div>
+
+  <!-- ===== Награда дня: 7-дневная цепочка ===== -->
+  <div id="screenDaily" class="screen hidden">
+    <div class="panel panel-wide">
+      <h2 class="over-title">НАГРАДА ДНЯ</h2>
+      <div class="skin-balance">Серия: <b id="dailyStreak">0</b> дн.</div>
+      <p class="board-note">
+        Заходи каждый день и забирай кристаллы. Пропустил день — серия начинается заново.
+        На 7-й день — крупный приз.
+      </p>
+      <div id="dailyList" class="daily-list"></div>
+      <button id="btnDailyClaim" class="btn btn-primary">ЗАБРАТЬ</button>
+      <button id="btnDailyBack" class="btn btn-ghost">НАЗАД</button>
+    </div>
+  </div>
+
+  <!-- ===== Достижения ===== -->
+  <div id="screenAch" class="screen hidden">
+    <div class="panel panel-wide">
+      <h2 class="over-title">ДОСТИЖЕНИЯ</h2>
+      <p class="board-note">Выполняй условия и забирай кристаллы. Награда выдаётся один раз.</p>
+      <div id="achList" class="tasks-list"></div>
+      <button id="btnAchBack" class="btn btn-ghost">НАЗАД</button>
     </div>
   </div>
 
@@ -224,7 +1256,2802 @@
   <div id="toast" class="toast hidden"></div>
 
   <!-- Каталог скинов подключается ПЕРЕД игрой -->
-  <script src="skins.js?v=6"></script>
-  <script src="game.js?v=6"></script>
+  <script>
+/* ============================================================================
+   DRAG TOWER — каталог скинов Огурчика Рика
+   ----------------------------------------------------------------------------
+   Чтобы добавить новый скин:
+     1. Положи PNG 768x256 с прозрачным фоном в 
+        (тот же размер и поля 8px, что у остальных спрайтов);
+     2. Добавь объект в SKIN_LIST ниже — id, имя, цену, файл, палитру.
+
+   Поля:
+     id      — уникальный ключ, пишется в localStorage;
+     name    — название в меню;
+     desc    — короткое описание;
+     price   — цена в кристаллах (0 = открыт сразу);
+     img     — путь к спрайту относительно index.html;
+     palette — запасные цвета, пока PNG грузится.
+
+   Тело у всех спрайтов одной геометрии: размер, физика и хитбокс одинаковые,
+   отличаются только раскраска и аксессуары.
+   ============================================================================ */
+(function () {
+  'use strict';
+
+  // Спрайт: 768x256, прозрачное поле по 8px с каждой стороны.
+  // content — прямоугольник самого тела огурчика (без прозрачных полей
+  // сверху/снизу). Именно он вписывается в блок, поэтому соседние блоки
+  // соприкасаются без зазора. Аксессуары (корона, антенна) могут выходить
+  // за пределы content и рисуются поверх — это не влияет на хитбокс.
+  var SPRITE = {
+    width: 768,
+    height: 280,
+    content: { x: 24, y: 34, w: 720, h: 200 }
+  };
+
+  var SKIN_LIST = [
+    {
+      id: 'classic',
+      bonus: 0,
+      name: 'Огурчик Рик',
+      desc: 'Тот самый. Немного устал от науки.',
+      price: 0,
+      img: 'classic.png?v=3',
+      palette: { body: '#8fc63d', body2: '#4a7016', accent: '#d9f08a', led: '#f4ffd6' }
+    },
+    {
+      id: 'mint',
+      bonus: 4,
+      name: 'Мятный Рик',
+      desc: 'Освежает и слегка холодит. Пахнет жвачкой.',
+      price: 150,
+      img: 'mint.png?v=3',
+      palette: { body: '#4fbfa8', body2: '#1f6b5c', accent: '#c9fff1', led: '#f0fffa' }
+    },
+    {
+      id: 'ice',
+      bonus: 8,
+      name: 'Крио-Рик',
+      desc: 'Закалён в жидком азоте. Хрустит.',
+      price: 360,
+      img: 'ice.png?v=3',
+      palette: { body: '#6fc3ef', body2: '#2a6ea8', accent: '#d8f3ff', led: '#f0fbff' }
+    },
+    {
+      id: 'chili',
+      bonus: 14,
+      name: 'Жгучий Рик',
+      desc: 'Перец в нём проснулся. Дышит огнём.',
+      price: 660,
+      img: 'chili.png?v=3',
+      palette: { body: '#e8553c', body2: '#7d1a12', accent: '#ffb08f', led: '#fff0e6' }
+    },
+    {
+      id: 'gold',
+      bonus: 22,
+      name: 'Золотой Рик',
+      desc: 'Корона из лабораторного золота.',
+      price: 1350,
+      img: 'gold.png?v=3',
+      palette: { body: '#f7d45c', body2: '#a9771a', accent: '#fff4c2', led: '#fffdf0' }
+    },
+    {
+      id: 'cosmic',
+      bonus: 36,
+      name: 'Космо-Рик',
+      desc: 'Шлем, звёзды и немного космической пыли.',
+      price: 2100,
+      img: 'cosmic.png?v=3',
+      palette: { body: '#8b6de0', body2: '#2a1858', accent: '#cbb8ff', led: '#f4f0ff' }
+    },
+    {
+      id: 'robot',
+      bonus: 48,
+      name: 'Робо-Рик',
+      desc: 'Собран из запчастей портала. Антенна ловит C-137.',
+      price: 2700,
+      img: 'robot.png?v=3',
+      palette: { body: '#b9c3cc', body2: '#5b6770', accent: '#e8f1f5', led: '#ffffff' }
+    },
+    {
+      id: 'magma',
+      bonus: 80,
+      name: 'Магматический Рик',
+      desc: 'Лава вместо сока. Трогать не советуем.',
+      price: 3600,
+      img: 'magma.png?v=3',
+      palette: { body: '#4a3a36', body2: '#1d1512', accent: '#ff7a1a', led: '#ffe3b0' }
+    },
+    {
+      id: 'rich',
+      bonus: 90,
+      name: 'Богатый Рик',
+      desc: 'Цилиндр, сигара и купюры вместо кожи.',
+      price: 4500,
+      img: 'rich.png?v=3',
+      palette: { body: '#5aa84a', body2: '#245c1e', accent: '#ffd85c', led: '#fff6cf' }
+    }
+  ];
+
+  var api = {
+    list: SKIN_LIST,
+    sprite: SPRITE,
+    storageKey: 'dragtower.skin',
+    ownedKey: 'dragtower.owned',
+    defaultId: 'classic',
+
+    get: function (id) {
+      for (var i = 0; i < SKIN_LIST.length; i++) {
+        if (SKIN_LIST[i].id === id) return SKIN_LIST[i];
+      }
+      return SKIN_LIST[0];
+    },
+
+    has: function (id) {
+      for (var i = 0; i < SKIN_LIST.length; i++) {
+        if (SKIN_LIST[i].id === id) return true;
+      }
+      return false;
+    }
+  };
+
+  window.DRAG_SKINS = api;
+})();
+
+</script>
+  <script>
+/* ============================================================================
+   DRAG TOWER — аркада «башня из вымышленных девайсов»
+   Telegram Mini App, чистый JavaScript + Canvas 2D, без зависимостей.
+
+   Визуальный стиль: мультяшная «межпространственная лаборатория»
+   (сдержанная отсылка к мультсериальной эстетике):
+   толстые чёрные контуры, плоская заливка, портальный зелёный,
+   горчичный жёлтый, приглушённый сине-зелёный фон, портал-вихрь.
+
+   Архитектура файла:
+     1.  Хранилище (localStorage) и настройки
+     2.  Интеграция с Telegram WebApp SDK
+     3.  Звук (Web Audio API, синтез без mp3)
+     4.  Лидерборд (локальный + опциональный общий бэкенд)
+     5.  Канвас, размеры, безопасные зоны
+     6.  Состояние игры
+     7.  Отрисовка девайсов и фона
+     8.  Игровая логика (спавн, установка, обрезка, промах)
+     9.  Главный цикл (обновление + рендер)
+     10. Ввод и UI-экраны
+
+   Важно про «не-телепортацию» башни: высота этажа и стартовая ширина
+   вычисляются ОДИН раз в начале партии и не меняются при ресайзе/повороте.
+   ============================================================================ */
+
+(function () {
+  'use strict';
+
+  /* ==========================================================================
+     0. НАСТРОЙКА ОБЩЕГО ЛИДЕРБОРДА
+     --------------------------------------------------------------------------
+     Пока пусто — рейтинг работает локально (на устройстве игрока).
+     Когда поднимешь бэкенд (например, на BotHost), впиши сюда адрес,
+     и игра начнёт слать результаты на сервер. Подробности в README.
+     ========================================================================== */
+  // Общий лидерборд включается автоматически на хостинге Bothost:
+  // тот же домен + /api. На GitHub Pages API нет — останется локальный рейтинг.
+  var LEADERBOARD_API = (function () {
+    try {
+      var h = window.location.hostname || '';
+      if (/bothost\.(tech|ru)$/.test(h)) return window.location.origin + '/api';
+    } catch (e) { /* ignore */ }
+    return '';
+  })();
+
+  /* Username бота — нужен для реферальных ссылок (БЕЗ символа @).
+     Это публичное имя, его можно держать в коде. Токен бота здесь
+     быть НЕ должен никогда: game.js скачивает каждый игрок. */
+  var BOT_USERNAME = 'ricktower_bot';
+
+  /* Short name Mini App — то, что указал в BotFather при /newapp */
+  var APP_SHORT_NAME = 'ricktower';
+
+  /* Сколько кристаллов даётся за приглашённого друга.
+     Значение дублируется на сервере — здесь оно только для показа. */
+  var REF_BONUS = 50;
+
+  /* ==========================================================================
+     СКИНЫ ОГУРЧИКА РИКА
+     --------------------------------------------------------------------------
+     Каталог лежит в src/skins.js (window.DRAG_SKINS): id, название, цена, PNG.
+     Здесь: покупка за кристаллы, выбор, сохранение и предзагрузка картинок.
+     Скины покупаются один раз и остаются на устройстве (localStorage).
+     ========================================================================== */
+
+  var SKIN_CATALOG = (window.DRAG_SKINS && window.DRAG_SKINS.list) ? window.DRAG_SKINS.list : [];
+  var SKIN_SPRITE = (window.DRAG_SKINS && window.DRAG_SKINS.sprite) ||
+    { width: 768, height: 256, content: { x: 0, y: 0, w: 768, h: 256 } };
+  var SKIN_KEY = (window.DRAG_SKINS && window.DRAG_SKINS.storageKey) || 'dragtower.skin';
+  var OWNED_KEY = (window.DRAG_SKINS && window.DRAG_SKINS.ownedKey) || 'dragtower.owned';
+  var SKINS_BY_ID = {};
+
+  for (var si = 0; si < SKIN_CATALOG.length; si++) {
+    SKINS_BY_ID[SKIN_CATALOG[si].id] = SKIN_CATALOG[si];
+  }
+
+  // Купленные скины. Классический открыт всегда и бесплатно.
+  var ownedSkins = (function () {
+    var list = loadJSON(OWNED_KEY, ['classic']);
+    if (!Array.isArray(list)) list = [];
+    var out = ['classic'];
+    for (var i = 0; i < list.length; i++) {
+      if (SKINS_BY_ID[list[i]] && out.indexOf(list[i]) < 0) out.push(list[i]);
+    }
+    return out;
+  })();
+
+  function isOwned(id) {
+    return ownedSkins.indexOf(id) >= 0;
+  }
+
+  function readSkinId() {
+    try {
+      var v = window.localStorage.getItem(SKIN_KEY);
+      if (v && SKINS_BY_ID[v] && isOwned(v)) return v;
+    } catch (e) { /* localStorage недоступен — играем со стандартным скином */ }
+    return 'classic';
+  }
+
+  var equippedSkinId = readSkinId();
+
+  function activeSkin() {
+    return SKINS_BY_ID[equippedSkinId] || SKIN_CATALOG[0] || null;
+  }
+
+  // Сохранение выбора: при следующем запуске скин применится автоматически
+  function equipSkin(id) {
+    if (!SKINS_BY_ID[id] || !isOwned(id)) return false;
+    equippedSkinId = id;
+    try { window.localStorage.setItem(SKIN_KEY, id); } catch (e) { /* ignore */ }
+    return true;
+  }
+
+  // Покупка или выбор. Возвращает:
+  //   'equipped' — скин уже был и надет,
+  //   'bought'   — куплен и надет,
+  //   'poor'     — не хватает кристаллов.
+  function pickSkin(id) {
+    var sk = SKINS_BY_ID[id];
+    if (!sk) return 'none';
+
+    if (isOwned(id)) {
+      equipSkin(id);
+      return 'equipped';
+    }
+
+    if (profile.gems < sk.price) return 'poor';
+
+    profile.gems -= sk.price;
+    save(STORE_KEYS.gems, profile.gems);
+    ownedSkins.push(id);
+    saveJSON(OWNED_KEY, ownedSkins);
+    equipSkin(id);
+    return 'bought';
+  }
+
+  // Предзагрузка PNG. Пока картинка не готова, рисуется кодовая версия
+  // огурчика в тех же цветах — игра не ждёт загрузку и не мигает.
+  function preloadSkinImages() {
+    for (var i = 0; i < SKIN_CATALOG.length; i++) {
+      var sk = SKIN_CATALOG[i];
+      if (sk.image) continue;
+      var img = new Image();
+      img.decoding = 'async';
+      img.src = sk.img;
+      sk.image = img;
+    }
+  }
+
+  /* ==========================================================================
+     1. ХРАНИЛИЩЕ И НАСТРОЙКИ
+     ========================================================================== */
+
+  var STORE_KEYS = {
+    best: 'dragtower.best',
+    gems: 'dragtower.gems',
+    sound: 'dragtower.sound',
+    board: 'dragtower.board',
+    jar: 'dragtower.jar',
+    jarAt: 'dragtower.jarAt',
+    theme: 'dragtower.theme',
+    tasks: 'dragtower.tasks',
+    jarSkins: 'dragtower.jarSkins',
+    up: 'dragtower.up',
+    daily: 'dragtower.daily',
+    ach: 'dragtower.ach',
+    stats: 'dragtower.stats',
+    titles: 'dragtower.titles',
+    title: 'dragtower.title'
+  };
+
+  function loadNum(key, fallback) {
+    try {
+      var v = window.localStorage.getItem(key);
+      if (v === null) return fallback;
+      var n = parseInt(v, 10);
+      return isNaN(n) ? fallback : n;
+    } catch (e) { return fallback; }
+  }
+  function loadBool(key, fallback) {
+    try {
+      var v = window.localStorage.getItem(key);
+      if (v === null) return fallback;
+      return v === '1';
+    } catch (e) { return fallback; }
+  }
+  function loadJSON(key, fallback) {
+    try {
+      var v = window.localStorage.getItem(key);
+      return v ? JSON.parse(v) : fallback;
+    } catch (e) { return fallback; }
+  }
+  function save(key, value) {
+    try { window.localStorage.setItem(key, String(value)); } catch (e) { /* ignore */ }
+  }
+  function saveJSON(key, value) {
+    try { window.localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* ignore */ }
+  }
+
+  var settings = {
+    sound: loadBool(STORE_KEYS.sound, true),
+    theme: (function () {
+      try { return window.localStorage.getItem(STORE_KEYS.theme) === 'dark' ? 'dark' : 'light'; }
+      catch (e) { return 'light'; }
+    })()
+  };
+
+  var profile = {
+    best: loadNum(STORE_KEYS.best, 0),
+    gems: loadNum(STORE_KEYS.gems, 0),
+    jar: loadNum(STORE_KEYS.jar, 0),
+    jarAt: loadNum(STORE_KEYS.jarAt, 0),
+    jarSkins: loadJSON(STORE_KEYS.jarSkins, null) || [],
+    up: loadJSON(STORE_KEYS.up, null) || { rate: 0, cap: 0 },
+    daily: loadJSON(STORE_KEYS.daily, null) || { last: '', streak: 0 },
+    ach: loadJSON(STORE_KEYS.ach, null) || [],
+    titles: loadJSON(STORE_KEYS.titles, null) || [],
+    title: (function () {
+      try { return window.localStorage.getItem(STORE_KEYS.title) || ''; } catch (e) { return ''; }
+    })(),
+    stats: loadJSON(STORE_KEYS.stats, null) || { floors: 0, perfects: 0, runs: 0, claimed: 0 }
+  };
+
+  // миграция старого счётчика банки в список скинов
+  if (!profile.jarSkins.length && profile.jar > 0) {
+    for (var jm = 0; jm < profile.jar; jm++) profile.jarSkins.push('classic');
+  }
+  profile.jar = profile.jarSkins.length;
+
+  /* Банка: каждый огурчик даёт пассивные кристаллы */
+  var JAR_RATE_BASE = 2;   // кристаллов в час за один огурчик
+  var JAR_CAP_BASE = 8;    // базовое время накопления, часов
+  var JAR_STEP_FLOOR = 35; // каждые N этажей — огурчик в банку
+  var UP_MAX = 5;
+  var UP_RATE_COST = 400;
+  var UP_CAP_COST = 300;
+
+  /* ==========================================================================
+     2. TELEGRAM WEBAPP SDK
+     ========================================================================== */
+
+  var tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+
+  // Данные игрока из Telegram: нужны для подписи результата в лидерборде
+  var tgUser = { id: 0, name: 'Игрок' };
+
+  /* Реферальное состояние.
+     invitedBy — ID пригласившего, прилетает в start_param по ссылке.
+     count/earned — сколько друзей пришло и сколько за них начислено;
+     реальные значения приходят с сервера, локально это только кэш для показа. */
+  var referral = {
+    invitedBy: 0,
+    count: loadNum('dragtower.refCount', 0),
+    earned: loadNum('dragtower.refEarned', 0),
+    reported: false // отправляли ли уже «я пришёл по ссылке» на сервер
+  };
+
+  function initTelegram() {
+    if (!tg) return; // обычный браузер — просто работаем дальше
+
+    try {
+      tg.ready();
+      tg.expand();
+      document.body.classList.add('tg');
+      if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+      if (tg.setHeaderColor) tg.setHeaderColor('#0e1519');
+      if (tg.setBackgroundColor) tg.setBackgroundColor('#0e1519');
+
+      applyThemeParams();
+
+      // Имя игрока для лидерборда
+      var u = tg.initDataUnsafe && tg.initDataUnsafe.user;
+      if (u) {
+        tgUser.id = u.id || 0;
+        tgUser.name = u.username
+          ? '@' + u.username
+          : [u.first_name, u.last_name].filter(Boolean).join(' ') || 'Игрок';
+      }
+
+      // Пришёл ли игрок по реферальной ссылке: ?startapp=ref_123456789
+      var sp = tg.initDataUnsafe && tg.initDataUnsafe.start_param;
+      if (sp && /^ref_\d+$/.test(sp)) {
+        var inviter = parseInt(sp.slice(4), 10);
+        // Сам себя пригласить нельзя — сервер проверит это ещё раз
+        if (inviter && inviter !== tgUser.id) referral.invitedBy = inviter;
+      }
+
+      if (tg.onEvent) {
+        tg.onEvent('viewportChanged', resizeCanvas);
+        tg.onEvent('themeChanged', applyThemeParams);
+      }
+    } catch (e) { /* SDK может быть частично недоступен */ }
+  }
+
+  // Своя светлая палитра: цвета текста из темы Telegram НЕ применяем,
+  // иначе в тёмной теме белый текст пропадает на белых панелях.
+  function applyThemeParams() { /* намеренно пусто */ }
+
+  function isColor(v) { return typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v); }
+
+  /* ==========================================================================
+     3. ЗВУК — Web Audio API, всё синтезируется на лету
+     ========================================================================== */
+
+  var audioCtx = null;
+
+  function ensureAudio() {
+    if (!settings.sound) return null;
+    try {
+      if (!audioCtx) {
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return null;
+        audioCtx = new Ctx();
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      return audioCtx;
+    } catch (e) { return null; }
+  }
+
+  function tone(freq, duration, type, volume, slideTo, delay) {
+    var ctx2 = ensureAudio();
+    if (!ctx2) return;
+    var t0 = ctx2.currentTime + (delay || 0);
+    var osc = ctx2.createOscillator();
+    var gain = ctx2.createGain();
+
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + duration);
+
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx2.destination);
+    osc.start(t0);
+    osc.stop(t0 + duration + 0.03);
+  }
+
+  function noiseBurst(duration, volume, filterFreq) {
+    var ctx2 = ensureAudio();
+    if (!ctx2) return;
+    var frames = Math.floor(ctx2.sampleRate * duration);
+    var buffer = ctx2.createBuffer(1, frames, ctx2.sampleRate);
+    var data = buffer.getChannelData(0);
+    for (var i = 0; i < frames; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
+    }
+    var src = ctx2.createBufferSource();
+    src.buffer = buffer;
+
+    var filter = ctx2.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = filterFreq || 900;
+
+    var gain = ctx2.createGain();
+    gain.gain.value = volume;
+
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx2.destination);
+    src.start();
+  }
+
+  var SFX = {
+    place: function () { tone(300, 0.09, 'square', 0.15, 170); },
+    perfect: function () {
+      // «портальный» восходящий аккорд
+      tone(520, 0.12, 'triangle', 0.17);
+      tone(780, 0.16, 'triangle', 0.14, null, 0.05);
+      tone(1170, 0.22, 'sine', 0.11, null, 0.1);
+    },
+    cut: function () { noiseBurst(0.25, 0.17, 700); },
+    over: function () {
+      tone(280, 0.5, 'sawtooth', 0.17, 65);
+      tone(140, 0.7, 'sine', 0.13, 42, 0.08);
+    },
+    ui: function () { tone(480, 0.06, 'sine', 0.11); }
+  };
+
+  /* ==========================================================================
+     4. ЛИДЕРБОРД
+     --------------------------------------------------------------------------
+     Два режима:
+       • LEADERBOARD_API пустой → локальный рейтинг в localStorage
+         (все результаты с этого устройства, подписанные именем из Telegram);
+       • LEADERBOARD_API задан → общий рейтинг: POST результата и GET топа.
+     Любая сетевая ошибка не ломает игру: молча откатываемся на локальный.
+     ========================================================================== */
+
+  var leaderboard = {
+    rows: loadJSON(STORE_KEYS.board, []), // [{id, name, score, date}]
+    remote: false
+  };
+
+  // Записываем результат в локальный рейтинг (одна строка на игрока — лучший счёт)
+  function recordLocalScore(score) {
+    var rows = leaderboard.rows.slice();
+    var key = tgUser.id || 'local';
+    var found = null;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].id === key) { found = rows[i]; break; }
+    }
+    if (found) {
+      if (score > found.score) { found.score = score; found.date = Date.now(); }
+      found.name = tgUser.name; // имя могло поменяться
+      found.title = profile.title || '';
+    } else {
+      rows.push({ id: key, name: tgUser.name, score: score, title: profile.title || '', date: Date.now() });
+    }
+    rows.sort(function (a, b) { return b.score - a.score; });
+    rows = rows.slice(0, 50);
+    leaderboard.rows = rows;
+    saveJSON(STORE_KEYS.board, rows);
+  }
+
+  // Отправка результата на общий сервер (если он настроен)
+  function submitRemoteScore(score) {
+    if (!LEADERBOARD_API) return;
+    try {
+      fetch(LEADERBOARD_API + '/score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // initData нужен серверу, чтобы проверить подпись Telegram
+          initData: tg ? tg.initData : '',
+          score: score,
+          title: profile.title || ''
+        })
+      })['catch'](function () { /* сеть недоступна — не мешаем игре */ });
+    } catch (e) { /* ignore */ }
+  }
+
+  // Загрузка общего топа; возвращает промис со списком строк
+  function fetchRemoteBoard() {
+    if (!LEADERBOARD_API) return Promise.resolve(null);
+    return fetch(LEADERBOARD_API + '/top?limit=20')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return null;
+        var list = Array.isArray(data) ? data : data.top;
+        return Array.isArray(list) ? list : null;
+      })
+      ['catch'](function () { return null; });
+  }
+
+  /* ==========================================================================
+     4.5. РЕФЕРАЛЬНАЯ СИСТЕМА
+     --------------------------------------------------------------------------
+     Как работает:
+       1. Игрок делится ссылкой вида
+          https://t.me/<бот>/<app>?startapp=ref_<его_id>
+       2. Друг открывает игру — Telegram кладёт 'ref_<id>' в start_param.
+       3. После ПЕРВОЙ сыгранной партии игра шлёт на сервер initData + ref.
+       4. Сервер проверяет подпись, что игрок новый и что ref ≠ сам игрок,
+          и начисляет бонус пригласившему.
+
+     Почему проверки на сервере: всё, что решает браузер, подделывается
+     через консоль за секунду. Клиент только сообщает факт, решает сервер.
+     Без LEADERBOARD_API рефералка не работает — показываем это честно.
+     ========================================================================== */
+
+  // Ссылка-приглашение с ID игрока внутри
+  function buildInviteLink() {
+    var id = tgUser.id || 0;
+    return 'https://t.me/' + BOT_USERNAME + '/' + APP_SHORT_NAME +
+           (id ? '?startapp=ref_' + id : '');
+  }
+
+  // Сообщаем серверу, что пришли по ссылке (один раз за сессию)
+  function reportReferral() {
+    if (!LEADERBOARD_API || !referral.invitedBy || referral.reported) return;
+    referral.reported = true;
+    try {
+      fetch(LEADERBOARD_API + '/referral', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          initData: tg ? tg.initData : '',
+          ref: referral.invitedBy
+        })
+      })['catch'](function () { /* сеть недоступна — не мешаем игре */ });
+    } catch (e) { /* ignore */ }
+  }
+
+  // Забираем с сервера актуальную статистику приглашений
+  function fetchReferralStats() {
+    if (!LEADERBOARD_API || !tg) return Promise.resolve(null);
+    return fetch(LEADERBOARD_API + '/referrals?initData=' +
+                 encodeURIComponent(tg.initData))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return null;
+        // Сервер — единственный источник правды по кристаллам за рефералов
+        referral.count = parseInt(data.count, 10) || 0;
+        referral.earned = parseInt(data.earned, 10) || 0;
+        save('dragtower.refCount', referral.count);
+        save('dragtower.refEarned', referral.earned);
+        if (typeof data.gems === 'number') {
+          profile.gems = data.gems;
+          save(STORE_KEYS.gems, profile.gems);
+        }
+        return data;
+      })
+      ['catch'](function () { return null; });
+  }
+
+  // Делимся ссылкой через нативный диалог Telegram
+  function inviteFriend() {
+    var link = buildInviteLink();
+    var text = 'Собери башню из огурчиков 🥒 Жду тебя в RICK TOWER!';
+
+    if (tg && tg.openTelegramLink) {
+      // share/url открывает выбор чата прямо внутри Telegram
+      tg.openTelegramLink('https://t.me/share/url?url=' +
+        encodeURIComponent(link) + '&text=' + encodeURIComponent(text));
+    } else {
+      copyInviteLink(); // в браузере просто копируем
+    }
+  }
+
+  // Копирование ссылки в буфер обмена с запасным вариантом для старых WebView
+  function copyInviteLink() {
+    var link = buildInviteLink();
+    var done = function () { showToast('Ссылка скопирована'); };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(done)['catch'](function () {
+        legacyCopy(link, done);
+      });
+    } else {
+      legacyCopy(link, done);
+    }
+  }
+
+  function legacyCopy(text, done) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      done();
+    } catch (e) {
+      showToast('Не удалось скопировать');
+    }
+  }
+
+  /* ==========================================================================
+     5. КАНВАС И РАЗМЕРЫ
+     ========================================================================== */
+
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+
+  var VIEW = { w: 360, h: 640, dpr: 1, safeTop: 0, safeBottom: 0 };
+
+  function readSafeInset(name) {
+    var probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;' +
+      'padding-' + name + ':env(safe-area-inset-' + name + ',0px);visibility:hidden;';
+    document.body.appendChild(probe);
+    var v = parseFloat(getComputedStyle(probe)['padding' + name.charAt(0).toUpperCase() + name.slice(1)]) || 0;
+    document.body.removeChild(probe);
+    return v;
+  }
+
+  function resizeCanvas() {
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+
+    if (tg && tg.viewportStableHeight && tg.viewportStableHeight > 100) {
+      h = Math.min(h, tg.viewportStableHeight);
+    }
+
+    VIEW.w = w;
+    VIEW.h = h;
+    VIEW.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    VIEW.safeTop = readSafeInset('top');
+    VIEW.safeBottom = readSafeInset('bottom');
+
+    canvas.width = Math.round(w * VIEW.dpr);
+    canvas.height = Math.round(h * VIEW.dpr);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    ctx.setTransform(VIEW.dpr, 0, 0, VIEW.dpr, 0, 0);
+
+    clampMovingBlock();
+  }
+
+  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('orientationchange', function () {
+    setTimeout(resizeCanvas, 120); // iOS сообщает размеры с задержкой
+  });
+
+  /* ==========================================================================
+     6. СОСТОЯНИЕ ИГРЫ
+     ========================================================================== */
+
+  var STATE = { MENU: 'menu', PLAY: 'play', OVER: 'over', BOARD: 'board', FRIENDS: 'friends', SKINS: 'skins', JAR: 'jar', TASKS: 'tasks', DAILY: 'daily', ACH: 'ach' };
+  var PHASE = { MOVING: 'moving', DROPPING: 'dropping', FALLING_OUT: 'fallingOut' };
+
+  var game = {
+    state: STATE.MENU,
+    phase: PHASE.MOVING,
+
+    blockH: 46,
+    startW: 240,
+    groundY: 90,
+
+    tower: [],
+    moving: null,
+    debris: [],
+    particles: [],
+    popups: [],
+
+    camera: 0,
+    cameraTarget: 0,
+    shake: 0,
+
+    score: 0,
+    gems: 0,
+    streak: 0,
+    bestStreak: 0,
+    nextWidth: 240,
+    dir: 1,
+    newBest: false,
+
+    overAt: 0,
+    clouds: []
+  };
+
+  var PERFECT_TOL = 7;
+  var WIDTH_BONUS = 16;
+  var GRAVITY = 3600;
+
+  /* --- Палитра вымышленных девайсов ---
+     Приглушённая мультяшная гамма: грязноватые насыщенные цвета,
+     каждый корпус обводится чёрным «чернильным» контуром. --- */
+  var INK = '#17303f';
+
+  /* Оттенки огурчиков: от молодого корнишона до перекисшего в рассоле */
+  var BRINE = '#c9d98a';   // цвет рассола в капельках
+
+  /* Выражения лица — чтобы в башне не было двух одинаковых огурчиков:
+       'smug'    — ухмылка и прищур,
+       'shock'   — круглые глаза, открытый рот,
+       'grin'    — широкая улыбка до ушей,
+       'squint'  — хитрый прищур,
+       'worried' — скошенные брови, волнистый рот. */
+  var FACES = ['smug', 'shock', 'grin', 'squint', 'worried'];
+
+  function makeStyle(index) {
+    // Палитра — запасной вариант, пока PNG скина не загрузился
+    var sk = activeSkin();
+    var p = (sk && sk.palette) || { body: '#8fc63d', body2: '#4a7016', accent: '#d9f08a', led: '#f4ffd6' };
+
+    return {
+      skin: sk,
+      body: p.body,
+      body2: p.body2,
+      accent: p.accent,
+      led: p.led,
+      face: FACES[Math.floor(Math.random() * FACES.length)],
+      tilt: (Math.random() - 0.5) * 0.1,
+      hasStem: Math.random() < 0.55,
+      hasDrip: Math.random() < 0.4,
+      phase: Math.random() * Math.PI * 2,
+      seed: index * 37 + Math.floor(Math.random() * 1000)
+    };
+  }
+
+  /* ==========================================================================
+     7. ОТРИСОВКА
+     ========================================================================== */
+
+  function worldToScreenY(worldY) {
+    return VIEW.h - game.groundY - worldY + game.camera;
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    var rr = Math.max(0, Math.min(r, w / 2, h / 2));
+    c.beginPath();
+    c.moveTo(x + rr, y);
+    c.lineTo(x + w - rr, y);
+    c.quadraticCurveTo(x + w, y, x + w, y + rr);
+    c.lineTo(x + w, y + h - rr);
+    c.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    c.lineTo(x + rr, y + h);
+    c.quadraticCurveTo(x, y + h, x, y + h - rr);
+    c.lineTo(x, y + rr);
+    c.quadraticCurveTo(x, y, x + rr, y);
+    c.closePath();
+  }
+
+  /* PNG-скин вписывается в тот же прямоугольник, что и процедурный огурчик.
+     Прозрачные поля спрайта (8px) отрезаются через source-rect, поэтому
+     видимый край совпадает с областью столкновения: предмет не «висит»
+     над башней и не проваливается в неё. */
+  function drawSkinSprite(x, y, w, h, style, opts, skin) {
+    var c = ctx;
+    var sp = SKIN_SPRITE.content;
+    var img = skin.image;
+
+    c.save();
+    var cx = x + w / 2;
+    var cy = y + h / 2;
+    c.translate(cx, cy);
+    c.rotate(style.tilt * 0.7);
+    c.translate(-cx, -cy);
+
+    // Портальный след под летящим огурчиком
+    if (opts.beam) {
+      c.save();
+      c.strokeStyle = '#7fb84a';
+      c.lineWidth = 2;
+      for (var bi = 1; bi <= 3; bi++) {
+        c.globalAlpha = 0.28 / bi;
+        c.beginPath();
+        c.ellipse(cx, y + h + 5 + bi * 5, w * 0.26 * bi * 0.7, 3 * bi, 0, 0, Math.PI * 2);
+        c.stroke();
+      }
+      c.restore();
+    }
+
+    if (opts.glow) {
+      c.shadowColor = 'rgba(92, 156, 62, 0.55)';
+      c.shadowBlur = opts.glow;
+    }
+    // Тело спрайта (content) вписывается в блок ровно, без прозрачных полей:
+    // поэтому соседние огурчики соприкасаются. Аксессуары выходят за блок.
+    var sx = w / sp.w;
+    var sy = h / sp.h;
+    var dx = x - sp.x * sx;
+    var dy = y - sp.y * sy;
+    var dw = SKIN_SPRITE.width * sx;
+    var dh = SKIN_SPRITE.height * sy;
+
+    c.imageSmoothingEnabled = true;
+    c.drawImage(img, 0, 0, SKIN_SPRITE.width, SKIN_SPRITE.height, dx, dy, dw, dh);
+    c.restore();
+  }
+
+  /**
+   * Рисует огурчик с лицом — элемент башни.
+   * Корпус: скруглённый цилиндр с пупырышками и продольными бликами,
+   * сверху хвостик от плодоножки, сбоку капелька рассола.
+   * Лицо: глаза с бликами, брови и рот — выражение зависит от style.face.
+   *
+   * opts.glow — сила свечения (у летящего огурчика сильнее),
+   * opts.beam — рисовать портальный след снизу.
+   */
+  function drawDevice(x, y, w, h, style, opts) {
+    opts = opts || {};
+    if (w < 1 || h < 1) return;
+
+    // Если PNG скина загружен — рисуем его, иначе кодовый огурчик ниже
+    var skin = style.skin || activeSkin();
+    if (skin && skin.image && skin.image.complete && skin.image.naturalWidth > 0) {
+      drawSkinSprite(x, y, w, h, style, opts, skin);
+      return;
+    }
+
+    var c = ctx;
+    c.save();
+
+    var ink = Math.max(1.5, Math.min(3.5, w * 0.05));
+    var t = performance.now() * 0.003 + style.phase;
+
+    var cx = x + w / 2;
+    var cy = y + h / 2;
+
+    // Лёгкий наклон вокруг центра — огурчики лежат чуть небрежно
+    c.translate(cx, cy);
+    c.rotate(style.tilt);
+    c.translate(-cx, -cy);
+
+
+    // --- Хвостик от плодоножки ---
+    if (style.hasStem && h > 26) {
+      var stemH = Math.min(h * 0.16, 9);
+      c.beginPath();
+      c.moveTo(cx, y + 2);
+      c.quadraticCurveTo(cx + w * 0.05, y - stemH * 0.6, cx - w * 0.03, y - stemH);
+      c.strokeStyle = '#5e7a22';
+      c.lineWidth = Math.max(2, ink * 1.1);
+      c.lineCap = 'round';
+      c.stroke();
+    }
+
+    // --- Корпус: вытянутый овал с сужающимися концами ---
+    // Рисуем вручную, чтобы концы были уже середины, как у настоящего огурца.
+    var midY = y + h / 2;
+    var taper = Math.min(h * 0.28, w * 0.18);  // насколько поджаты концы
+    var bulge = h * 0.04;                       // лёгкая пузатость середины
+
+    function bodyOutline(inset) {
+      var xx = x + inset, ww = w - inset * 2;
+      var yy = y + inset, hh = h - inset * 2;
+      var my = yy + hh / 2;
+      var tp = Math.min(taper, ww * 0.3);
+      c.beginPath();
+      c.moveTo(xx + tp, yy);
+      c.bezierCurveTo(xx + ww * 0.35, yy - bulge, xx + ww * 0.65, yy - bulge, xx + ww - tp, yy);
+      c.bezierCurveTo(xx + ww - tp * 0.25, yy, xx + ww, my - hh * 0.3, xx + ww, my);
+      c.bezierCurveTo(xx + ww, my + hh * 0.3, xx + ww - tp * 0.25, yy + hh, xx + ww - tp, yy + hh);
+      c.bezierCurveTo(xx + ww * 0.65, yy + hh + bulge, xx + ww * 0.35, yy + hh + bulge, xx + tp, yy + hh);
+      c.bezierCurveTo(xx + tp * 0.25, yy + hh, xx, my + hh * 0.3, xx, my);
+      c.bezierCurveTo(xx, my - hh * 0.3, xx + tp * 0.25, yy, xx + tp, yy);
+      c.closePath();
+    }
+
+    bodyOutline(0);
+
+    if (opts.glow) {
+      c.shadowColor = style.body;
+      c.shadowBlur = opts.glow;
+    }
+    var grad = c.createLinearGradient(0, y, 0, y + h);
+    grad.addColorStop(0, style.accent);
+    grad.addColorStop(0.3, style.body);
+    grad.addColorStop(1, style.body2);
+    c.fillStyle = grad;
+    c.fill();
+    c.shadowBlur = 0;
+
+    // Декор обрезаем по форме огурчика
+    c.save();
+    bodyOutline(0);
+    c.clip();
+
+    // Продольные светлые полосы — характерная «дольчатость» огурца
+    c.globalAlpha = 0.16;
+    c.fillStyle = '#ffffff';
+    c.fillRect(x, y + h * 0.24, w, Math.max(1.5, h * 0.045));
+    c.fillRect(x, y + h * 0.66, w, Math.max(1.2, h * 0.035));
+    c.globalAlpha = 1;
+
+    // Пупырышки: мелкие бугорки со светлой фаской и тенью
+    var bumpStep = Math.max(14, w / 8);
+    for (var bx = x + bumpStep * 0.7; bx < x + w - 6; bx += bumpStep) {
+      for (var row = 0; row < 2; row++) {
+        var by = midY + (row === 0 ? -h * 0.22 : h * 0.2) + ((bx / bumpStep) % 2) * h * 0.07;
+        var br = Math.max(1.1, Math.min(w * 0.014, 2.3));
+        c.globalAlpha = 0.28;
+        c.fillStyle = '#28400c';
+        c.beginPath();
+        c.arc(bx, by + br * 0.5, br, 0, Math.PI * 2);
+        c.fill();
+        c.globalAlpha = 0.4;
+        c.fillStyle = '#eaffc0';
+        c.beginPath();
+        c.arc(bx, by - br * 0.3, br * 0.8, 0, Math.PI * 2);
+        c.fill();
+      }
+    }
+    c.globalAlpha = 1;
+
+    // Верхний блик вдоль корпуса
+    var gloss = c.createLinearGradient(0, y, 0, y + h * 0.5);
+    gloss.addColorStop(0, 'rgba(255,255,255,0.32)');
+    gloss.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = gloss;
+    roundRect(c, x + w * 0.1, y + h * 0.1, w * 0.8, h * 0.26, h * 0.13);
+    c.fill();
+
+    c.restore(); // снимаем clip
+
+    // --- Контур ---
+    bodyOutline(ink / 2);
+    c.strokeStyle = INK;
+    c.lineWidth = ink;
+    c.lineJoin = 'round';
+    c.stroke();
+
+    // --- Лицо: смещено к одному из концов, как у персонажа-огурца ---
+    drawFace(c, cx, midY, w, h, style, ink, t);
+
+    // --- Капелька рассола, слегка покачивается ---
+    if (style.hasDrip && h > 28) {
+      var dx = x + w * 0.82;
+      var dy = y + h - 1 + Math.sin(t * 0.6) * 1.5;
+      var dr = Math.max(2, Math.min(h * 0.09, 4));
+      c.beginPath();
+      c.moveTo(dx, dy - dr);
+      c.quadraticCurveTo(dx + dr, dy + dr * 0.4, dx, dy + dr);
+      c.quadraticCurveTo(dx - dr, dy + dr * 0.4, dx, dy - dr);
+      c.closePath();
+      c.fillStyle = BRINE;
+      c.globalAlpha = 0.8;
+      c.fill();
+      c.globalAlpha = 1;
+      c.strokeStyle = INK;
+      c.lineWidth = ink * 0.5;
+      c.stroke();
+    }
+
+    c.restore();
+  }
+
+  /* Лицо огурчика: глаза, брови и рот. Выражение задаётся style.face. */
+  /* Лицо: выпуклые глаза-шары, зубастый рот, одинокая бровь.
+     Пропорции взяты с референса — глаза крупные и близко посажены,
+     рот широкий и открытый, с видимым рядом зубов. */
+  function drawFace(c, cx, cy, w, h, style, ink, t) {
+    if (w < 30 || h < 16) return; // на мелких обрезках лицо не помещается
+
+    var eyeR = Math.max(3, Math.min(h * 0.2, w * 0.075, 11));
+    var gap = eyeR * 1.05;              // глаза почти вплотную
+    var eyeY = cy - h * 0.14;
+    var face = style.face;
+
+    // Моргание
+    var blink = Math.sin(t * 0.35 + style.phase) > 0.985;
+
+    // --- Бровь: одна тонкая дуга над глазами ---
+    c.strokeStyle = '#9fb8c4';
+    c.lineWidth = Math.max(1.6, eyeR * 0.3);
+    c.lineCap = 'round';
+    c.beginPath();
+    var browY = eyeY - eyeR * 1.35;
+    if (face === 'worried') {
+      c.moveTo(cx - gap - eyeR * 0.8, browY + eyeR * 0.3);
+      c.quadraticCurveTo(cx, browY - eyeR * 0.5, cx + gap + eyeR * 0.8, browY + eyeR * 0.5);
+    } else {
+      c.moveTo(cx - gap - eyeR * 0.9, browY + eyeR * 0.2);
+      c.quadraticCurveTo(cx, browY - eyeR * 0.65, cx + gap + eyeR * 0.9, browY + eyeR * 0.1);
+    }
+    c.stroke();
+
+    // --- Глаза: выпуклые белые шары с тенью у основания ---
+    [-1, 1].forEach(function (s) {
+      var ex = cx + s * gap;
+
+      // тень под глазом — создаёт ощущение, что он выступает из тела
+      c.beginPath();
+      c.ellipse(ex, eyeY + eyeR * 0.3, eyeR * 1.05, eyeR * 0.9, 0, 0, Math.PI * 2);
+      c.fillStyle = 'rgba(40, 64, 12, 0.5)';
+      c.fill();
+
+      if (blink) {
+        c.strokeStyle = INK;
+        c.lineWidth = Math.max(1.5, ink * 0.6);
+        c.beginPath();
+        c.arc(ex, eyeY, eyeR * 0.8, Math.PI * 0.15, Math.PI * 0.85);
+        c.stroke();
+        return;
+      }
+
+      var squint = (face === 'squint' || face === 'smug') ? 0.78 : 1;
+      var big = face === 'shock' ? 1.15 : 1;
+      drawEye(c, ex, eyeY, eyeR * big, ink, squint);
+    });
+
+    // --- Рот ---
+    var mouthY = cy + h * 0.2;
+    var mw = Math.max(5, Math.min(w * 0.1, h * 0.26, 18));
+    var mh = mw * (face === 'shock' ? 0.85 : 0.62);
+
+    if (face === 'worried') {
+      // Сжатая волнистая линия
+      c.strokeStyle = INK;
+      c.lineWidth = Math.max(1.8, ink * 0.85);
+      c.beginPath();
+      c.moveTo(cx - mw, mouthY);
+      c.quadraticCurveTo(cx - mw * 0.5, mouthY - mw * 0.3, cx, mouthY);
+      c.quadraticCurveTo(cx + mw * 0.5, mouthY + mw * 0.3, cx + mw, mouthY);
+      c.stroke();
+      return;
+    }
+
+    // Открытый рот: тёмная полость с рядом зубов сверху
+    c.save();
+    c.beginPath();
+    if (face === 'grin') {
+      // Широкий оскал — полуэллипс вниз
+      c.ellipse(cx, mouthY - mh * 0.15, mw, mh, 0, 0, Math.PI);
+    } else if (face === 'shock') {
+      c.ellipse(cx, mouthY, mw * 0.8, mh, 0, 0, Math.PI * 2);
+    } else {
+      // Асимметричный кривой рот
+      c.ellipse(cx, mouthY - mh * 0.1, mw, mh * 0.9, 0.12, 0, Math.PI * 2);
+    }
+    c.closePath();
+    c.fillStyle = '#3d1620';
+    c.fill();
+    c.strokeStyle = INK;
+    c.lineWidth = Math.max(1.5, ink * 0.7);
+    c.stroke();
+
+    // Зубы: белая полоса с вертикальными разделителями
+    if (mw > 7) {
+      c.clip();
+      var toothH = Math.max(2, mh * 0.42);
+      var toothY = mouthY - mh * (face === 'shock' ? 0.85 : 0.95);
+      c.fillStyle = '#f2f4ea';
+      c.fillRect(cx - mw, toothY, mw * 2, toothH);
+      c.strokeStyle = 'rgba(60,40,40,0.5)';
+      c.lineWidth = 1;
+      for (var tx = cx - mw + mw * 0.4; tx < cx + mw; tx += mw * 0.4) {
+        c.beginPath();
+        c.moveTo(tx, toothY);
+        c.lineTo(tx, toothY + toothH);
+        c.stroke();
+      }
+    }
+    c.restore();
+  }
+  /* Мультяшный глаз: белок, зрачок, блик.
+     squint < 1 сплющивает глаз по вертикали — получается прищур. */
+  function drawEye(c, cx, cy, r, ink, squint) {
+    var sq = squint == null ? 1 : squint;
+
+    c.beginPath();
+    c.ellipse(cx, cy, r, r * sq, 0, 0, Math.PI * 2);
+    c.fillStyle = '#f6f8f2';
+    c.fill();
+    c.strokeStyle = INK;
+    c.lineWidth = ink * 0.6;
+    c.stroke();
+
+    // Зрачок смещён к центру лица — взгляд «в кадр»
+    c.beginPath();
+    c.arc(cx + r * 0.12, cy + r * sq * 0.12, r * 0.4 * Math.max(sq, 0.7), 0, Math.PI * 2);
+    c.fillStyle = INK;
+    c.fill();
+
+    c.beginPath();
+    c.arc(cx - r * 0.25, cy - r * sq * 0.3, r * 0.17, 0, Math.PI * 2);
+    c.fillStyle = '#ffffff';
+    c.fill();
+  }
+
+
+
+  /* Мягкая контактная тень внизу блока: башня читается плотнее,
+     а стык между огурчиками не выглядит «плоской склейкой». */
+  function drawBlockContact(x, y, w, h, index) {
+    var c = ctx;
+    var g = c.createLinearGradient(0, y + h * 0.8, 0, y + h);
+    g.addColorStop(0, 'rgba(26, 48, 26, 0)');
+    g.addColorStop(1, 'rgba(26, 48, 26, 0.28)');
+    c.save();
+    c.fillStyle = g;
+    c.fillRect(x + w * 0.14, y + h * 0.8, w * 0.72, h * 0.2);
+    if (index > 0) {
+      c.globalAlpha = 0.18;
+      c.fillStyle = '#ffffff';
+      c.fillRect(x + w * 0.2, y + 1, w * 0.6, 2);
+    }
+    c.restore();
+  }
+
+  function initClouds() {
+    game.clouds = [];
+    for (var i = 0; i < 10; i++) {
+      game.clouds.push({
+        x: Math.random(),
+        y: 0.02 + Math.random() * 0.58,
+        s: 0.55 + Math.random() * 0.75,
+        depth: 0.2 + Math.random() * 0.6,
+        drift: 0.004 + Math.random() * 0.012,
+        alpha: 0.55 + Math.random() * 0.35
+      });
+    }
+  }
+
+  /* Одно облако: несколько кругов и плоское основание.
+     Без картинок — значит, не мылится на любом DPR. */
+  function drawCloud(x, y, s, alpha) {
+    var c = ctx;
+    var puffs = [[-34, 8, 21], [-12, -6, 27], [14, -10, 30], [38, 6, 21], [0, 14, 26]];
+    c.save();
+    c.globalAlpha = alpha;
+
+    // мягкая голубая тень-подложка: облако читается даже на бледном небе
+    c.fillStyle = '#cfe8f7';
+    for (var s0 = 0; s0 < puffs.length; s0++) {
+      c.beginPath();
+      c.arc(x + puffs[s0][0] * s, y + (puffs[s0][1] + 5) * s, puffs[s0][2] * s, 0, Math.PI * 2);
+      c.fill();
+    }
+    roundRect(c, x - 56 * s, y + 9 * s, 112 * s, 28 * s, 14 * s);
+    c.fill();
+
+    c.fillStyle = '#ffffff';
+    for (var i = 0; i < puffs.length; i++) {
+      c.beginPath();
+      c.arc(x + puffs[i][0] * s, y + puffs[i][1] * s, puffs[i][2] * s, 0, Math.PI * 2);
+      c.fill();
+    }
+    roundRect(c, x - 56 * s, y + 6 * s, 112 * s, 26 * s, 13 * s);
+    c.fill();
+
+    // голубоватая тень снизу — облако не выглядит плоской наклейкой
+    c.globalAlpha = alpha * 0.35;
+    c.fillStyle = '#c9e6f6';
+    c.beginPath();
+    c.ellipse(x + 2 * s, y + 28 * s, 48 * s, 9 * s, 0, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+  }
+
+  /* Солнечные лучи — мягкие, почти прозрачные */
+  function drawSunRays(sx, sy, time) {
+    var c = ctx;
+    var len = Math.max(VIEW.w, VIEW.h) * 1.1;
+    c.save();
+    c.fillStyle = '#fff3b8';
+    c.globalAlpha = 0.16;
+    for (var i = 0; i < 5; i++) {
+      var a = -1.0 + i * 0.33 + Math.sin(time * 0.0002 + i) * 0.012;
+      c.beginPath();
+      c.moveTo(sx, sy);
+      c.lineTo(sx + Math.cos(a - 0.055) * len, sy + Math.sin(a - 0.055) * len);
+      c.lineTo(sx + Math.cos(a + 0.055) * len, sy + Math.sin(a + 0.055) * len);
+      c.closePath();
+      c.fill();
+    }
+    c.restore();
+  }
+
+  /* Птицы: три силуэта, машут крыльями и медленно летят */
+  function drawBirds(time) {
+    var c = ctx;
+    c.save();
+    c.strokeStyle = 'rgba(58, 88, 104, 0.55)';
+    c.lineWidth = 2.4;
+    c.lineCap = 'round';
+    for (var i = 0; i < 3; i++) {
+      var bx = ((i * 0.33 + 0.1) * VIEW.w + time * 0.007 * (i + 1)) % (VIEW.w + 100) - 50;
+      var by = VIEW.h * (0.2 + i * 0.06) + Math.sin(time * 0.001 + i) * 6 + game.camera * 0.04;
+      var s = 7 + i * 2;
+      var flap = Math.sin(time * 0.005 + i * 1.7) * 0.7;
+      c.beginPath();
+      c.moveTo(bx - s, by + s * 0.4 * flap);
+      c.quadraticCurveTo(bx - s * 0.35, by - s * 0.35, bx, by);
+      c.quadraticCurveTo(bx + s * 0.35, by - s * 0.35, bx + s, by + s * 0.4 * flap);
+      c.stroke();
+    }
+    c.restore();
+  }
+
+  /* Пыльца/споры: мелкие точки, медленно поднимаются вверх */
+  function drawSpores(time) {
+    var c = ctx;
+    c.save();
+    c.fillStyle = '#ffffff';
+    for (var i = 0; i < 14; i++) {
+      var x = ((i * 73) % 100) / 100 * VIEW.w + Math.sin(time * 0.0007 + i) * 16;
+      var span = VIEW.h + 60;
+      var y = (((i * 137) % 100) / 100 * span - time * 0.012 * (1 + i % 3)) % span;
+      if (y < 0) y += span;
+      var r = 1.3 + (i % 3) * 0.7;
+      c.globalAlpha = 0.3 + 0.25 * Math.sin(time * 0.002 + i);
+      c.beginPath();
+      c.arc(x, y, r, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 1;
+    c.restore();
+  }
+
+  function drawNightSky(time) {
+    var c = ctx;
+
+    var g = c.createLinearGradient(0, 0, 0, VIEW.h);
+    g.addColorStop(0, '#182a40');
+    g.addColorStop(0.45, '#22405c');
+    g.addColorStop(0.8, '#2b4a63');
+    g.addColorStop(1, '#223641');
+    c.fillStyle = g;
+    c.fillRect(0, 0, VIEW.w, VIEW.h);
+
+    // звёзды
+    for (var i = 0; i < 46; i++) {
+      var stx = ((i * 97) % 100) / 100 * VIEW.w;
+      var sty = (((i * 61) % 100) / 100 * VIEW.h * 0.72 + game.camera * 0.01) % (VIEW.h * 0.8);
+      var tw = 0.4 + 0.6 * Math.abs(Math.sin(time * 0.0011 + i * 1.7));
+      c.globalAlpha = 0.25 + 0.6 * tw;
+      c.fillStyle = '#eaf3ff';
+      c.beginPath();
+      c.arc(stx, sty, 1.0 + (i % 3) * 0.5, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 1;
+
+    // луна
+    var mx = VIEW.w * 0.82;
+    var my = VIEW.h * 0.13 + game.camera * 0.02;
+    var mr = Math.min(VIEW.w, VIEW.h) * 0.07;
+    var glow = c.createRadialGradient(mx, my, 0, mx, my, mr * 3.4);
+    glow.addColorStop(0, 'rgba(214, 232, 255, 0.5)');
+    glow.addColorStop(0.4, 'rgba(190, 214, 246, 0.22)');
+    glow.addColorStop(1, 'rgba(190, 214, 246, 0)');
+    c.fillStyle = glow;
+    c.beginPath();
+    c.arc(mx, my, mr * 3.4, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = '#eef5ff';
+    c.beginPath();
+    c.arc(mx, my, mr, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = 'rgba(196, 212, 232, 0.9)';
+    c.beginPath(); c.arc(mx - mr * 0.3, my - mr * 0.2, mr * 0.22, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(mx + mr * 0.25, my + mr * 0.3, mr * 0.16, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(mx + mr * 0.35, my - mr * 0.35, mr * 0.1, 0, Math.PI * 2); c.fill();
+
+    // облака — еле заметные
+    var span = VIEW.w + 260;
+    for (var k = 0; k < game.clouds.length; k++) {
+      var cl = game.clouds[k];
+      var cx2 = ((cl.x * span + time * cl.drift) % span) - 130;
+      var cy2 = cl.y * VIEW.h + game.camera * cl.depth * 0.22;
+      cy2 = cy2 % (VIEW.h + 200);
+      if (cy2 < -120) cy2 += VIEW.h + 200;
+      c.globalAlpha = 0.16;
+      drawCloud(cx2, cy2, cl.s, 1);
+      c.globalAlpha = 1;
+    }
+
+    drawSpores(time);
+    drawHills();
+  }
+
+  function drawBackground(time) {
+    var c = ctx;
+
+    if (settings.theme === 'dark') {
+      drawNightSky(time);
+      return;
+    }
+
+    // Светлое небо: бледно-голубое сверху, тёплое у горизонта
+    var g = c.createLinearGradient(0, 0, 0, VIEW.h);
+    g.addColorStop(0, '#b4ddf7');
+    g.addColorStop(0.42, '#d9f0fd');
+    g.addColorStop(0.76, '#f5feff');
+    g.addColorStop(1, '#e4f4dd');
+    c.fillStyle = g;
+    c.fillRect(0, 0, VIEW.w, VIEW.h);
+
+    // Солнце с мягким ореолом
+    var sx = VIEW.w * 0.82;
+    var sy = VIEW.h * 0.13 + game.camera * 0.02;
+    var sr = Math.min(VIEW.w, VIEW.h) * 0.07;
+    var sun = c.createRadialGradient(sx, sy, 0, sx, sy, sr * 3.2);
+    sun.addColorStop(0, 'rgba(255, 249, 214, 0.95)');
+    sun.addColorStop(0.35, 'rgba(255, 249, 214, 0.45)');
+    sun.addColorStop(1, 'rgba(255, 249, 214, 0)');
+    c.fillStyle = sun;
+    c.beginPath();
+    c.arc(sx, sy, sr * 3.2, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = '#fff8c9';
+    c.beginPath();
+    c.arc(sx, sy, sr, 0, Math.PI * 2);
+    c.fill();
+
+    drawSunRays(sx, sy, time);
+
+    // Облака плывут медленно и слегка смещаются от камеры
+    var span = VIEW.w + 260;
+    for (var i = 0; i < game.clouds.length; i++) {
+      var cl = game.clouds[i];
+      var cx2 = ((cl.x * span + time * cl.drift) % span) - 130;
+      var cy2 = cl.y * VIEW.h + game.camera * cl.depth * 0.22;
+      cy2 = cy2 % (VIEW.h + 200);
+      if (cy2 < -120) cy2 += VIEW.h + 200;
+      drawCloud(cx2, cy2, cl.s, cl.alpha);
+    }
+
+    drawBirds(time);
+    drawSpores(time);
+
+    drawHills();
+  }
+
+  /* Холмы у горизонта: два светлых слоя, без ночного города и неона */
+  function drawHills() {
+    var c = ctx;
+    var baseY = VIEW.h - game.groundY + game.camera;
+    if (baseY < -160 || baseY > VIEW.h + 320) return;
+
+    c.save();
+    var night = settings.theme === 'dark';
+    c.fillStyle = night ? 'rgba(48, 76, 94, 0.9)' : 'rgba(158, 203, 160, 0.85)';
+    c.beginPath();
+    c.moveTo(0, baseY + 40);
+    c.quadraticCurveTo(VIEW.w * 0.2, baseY - 50, VIEW.w * 0.42, baseY + 10);
+    c.quadraticCurveTo(VIEW.w * 0.62, baseY - 70, VIEW.w * 0.85, baseY + 5);
+    c.quadraticCurveTo(VIEW.w * 0.95, baseY - 20, VIEW.w, baseY + 25);
+    c.lineTo(VIEW.w, baseY + 220);
+    c.lineTo(0, baseY + 220);
+    c.closePath();
+    c.fill();
+
+    c.fillStyle = night ? 'rgba(36, 60, 78, 0.95)' : 'rgba(122, 182, 132, 0.9)';
+    c.beginPath();
+    c.moveTo(0, baseY + 62);
+    c.quadraticCurveTo(VIEW.w * 0.3, baseY - 8, VIEW.w * 0.55, baseY + 48);
+    c.quadraticCurveTo(VIEW.w * 0.8, baseY - 2, VIEW.w, baseY + 52);
+    c.lineTo(VIEW.w, baseY + 220);
+    c.lineTo(0, baseY + 220);
+    c.closePath();
+    c.fill();
+
+    // травинки на ближнем холме
+    c.strokeStyle = night ? 'rgba(74, 114, 100, 0.7)' : 'rgba(96, 152, 92, 0.7)';
+    c.lineWidth = 2;
+    c.lineCap = 'round';
+    for (var g = 0; g < 14; g++) {
+      var gx = (g + 0.5) / 14 * VIEW.w;
+      var gy = baseY + 26 + (g % 3) * 7;
+      var gh = 5 + (g % 4) * 2;
+      c.beginPath();
+      c.moveTo(gx, gy);
+      c.quadraticCurveTo(gx + 2, gy - gh, gx + 4, gy - gh * 0.6);
+      c.moveTo(gx, gy);
+      c.quadraticCurveTo(gx - 2, gy - gh * 0.8, gx - 4, gy - gh * 0.5);
+      c.stroke();
+    }
+    c.restore();
+  }
+
+  // Пол/пьедестал под первым девайсом
+  function drawGround() {
+    var c = ctx;
+    var y = worldToScreenY(0);
+    if (y < -60 || y > VIEW.h + 60) return;
+
+    var padW = Math.min(VIEW.w * 0.94, game.startW * 1.6);
+    var padX = (VIEW.w - padW) / 2;
+
+    c.save();
+    var g = c.createLinearGradient(0, y, 0, y + 44);
+    g.addColorStop(0, '#f7e8bf');
+    g.addColorStop(1, '#d2b682');
+    roundRect(c, padX, y, padW, 44, 10);
+    c.fillStyle = g;
+    c.fill();
+    c.strokeStyle = INK;
+    c.lineWidth = 3;
+    c.lineJoin = 'round';
+    c.stroke();
+
+    // Зелёная кромка платформы
+    c.strokeStyle = 'rgba(108, 175, 72, 0.9)';
+    c.lineWidth = 3;
+    c.beginPath();
+    c.moveTo(padX + 12, y + 5);
+    c.lineTo(padX + padW - 12, y + 5);
+    c.stroke();
+    c.restore();
+  }
+
+  /* ==========================================================================
+     8. ИГРОВАЯ ЛОГИКА
+     ========================================================================== */
+
+  function currentSpeed() {
+    var scale = Math.max(0.75, Math.min(VIEW.w / 390, 1.6));
+    var base = 165 + game.score * 9;
+    return Math.min(base, 540) * scale;
+  }
+
+  function topBlock() { return game.tower[game.tower.length - 1]; }
+
+  function towerTopWorld() { return game.tower.length * game.blockH; }
+
+  function spawnMoving() {
+    var w = Math.max(14, game.nextWidth);
+    var base = towerTopWorld();
+    var hover = game.blockH * 2.4;
+
+    // Направление чередуется: чётный этаж — слева направо, нечётный — наоборот
+    game.dir = (game.tower.length % 2 === 0) ? 1 : -1;
+
+    var maxX = Math.max(0, VIEW.w - w);
+
+    game.moving = {
+      x: game.dir > 0 ? 0 : maxX,
+      w: w,
+      base: base,
+      y: base + hover,
+      targetY: base,
+      vy: 0,
+      style: makeStyle(game.tower.length)
+    };
+    game.phase = PHASE.MOVING;
+  }
+
+  function clampMovingBlock() {
+    if (!game.moving) return;
+    var maxX = Math.max(0, VIEW.w - game.moving.w);
+    if (game.moving.x > maxX) game.moving.x = maxX;
+    if (game.moving.x < 0) game.moving.x = 0;
+  }
+
+  function startGame() {
+    // Размеры фиксируем один раз на партию — башня не «прыгает» при повороте.
+    // Блок сделан выше и уже обычного: иначе девайс с картриджем не читается.
+    game.blockH = Math.max(42, Math.min(VIEW.h * 0.075, 62));
+    game.startW = Math.max(120, Math.min(VIEW.w * 0.5, 212));
+    // бонус скина не меняет внешний вид — только прощает промах
+    game.forgive = (activeSkin() && activeSkin().bonus) || 0;
+    game.groundY = Math.max(80, VIEW.h * 0.16 + VIEW.safeBottom);
+
+    game.tower = [];
+    game.debris = [];
+    game.particles = [];
+    game.popups = [];
+    game.score = 0;
+    game.gems = 0;
+    game.streak = 0;
+    game.bestStreak = 0;
+    game.newBest = false;
+    game.nextWidth = game.startW;
+    game.camera = 0;
+    game.cameraTarget = 0;
+    game.shake = 0;
+
+    game.tower.push({
+      x: (VIEW.w - game.startW) / 2,
+      w: game.startW,
+      base: 0,
+      style: makeStyle(0)
+    });
+
+    spawnMoving();
+    game.state = STATE.PLAY;
+    updateHud();
+    showScreen(null);
+    el.hud.classList.remove('hidden');
+    el.tapHint.classList.remove('hidden');
+    setTimeout(function () { el.tapHint.classList.add('hidden'); }, 2600);
+  }
+
+  /**
+   * Главное действие игрока: «уронить» девайс.
+   * Вся игровая логика (очки, обрезка, промах) решается ЗДЕСЬ, в момент тапа.
+   * Дальше идёт только анимация — поэтому очки за промах начислить невозможно.
+   */
+  function dropBlock() {
+    if (game.state !== STATE.PLAY || game.phase !== PHASE.MOVING || !game.moving) return;
+
+    var prev = topBlock();
+    var cur = game.moving;
+
+    var overlapLeft = Math.max(prev.x, cur.x);
+    var overlapRight = Math.min(prev.x + prev.w, cur.x + cur.w);
+    var overlap = overlapRight - overlapLeft;
+    var delta = cur.x - prev.x;
+
+    // ---- ПРОМАХ: пересечения нет ----
+    if (overlap <= 0) {
+      game.phase = PHASE.FALLING_OUT;
+      game.debris.push({
+        x: cur.x, w: cur.w, h: game.blockH,
+        y: cur.y, vy: -60, vx: (delta > 0 ? 120 : -120),
+        rot: 0, vrot: (delta > 0 ? 3 : -3),
+        style: cur.style, life: 2.2
+      });
+      game.moving = null;
+      game.streak = 0;
+      game.shake = 14;
+      SFX.over();
+      game.overAt = performance.now();
+      updateHud();
+      return;
+    }
+
+    taskAdd('blocks', 1);
+
+    // ---- ИДЕАЛЬНОЕ ПОПАДАНИЕ ----
+    var isPerfect = Math.abs(delta) <= PERFECT_TOL + game.forgive / 2;
+    var placedX, placedW;
+
+    if (isPerfect) {
+      placedX = prev.x;
+      placedW = prev.w;
+      game.streak++;
+      taskAdd('perfect', 1);
+      profile.stats.perfects++;
+      saveJSON(STORE_KEYS.stats, profile.stats);
+      if (game.streak > game.bestStreak) game.bestStreak = game.streak;
+      /* идеальное попадание больше не даёт отдельных кристаллов */
+
+      var bonus = 0;
+      if (game.streak % 3 === 0) {
+        bonus = WIDTH_BONUS;
+        spawnPopup('ШИРЕ! +' + WIDTH_BONUS, '#c9861e', 0.35);
+      }
+      game.nextWidth = Math.min(game.startW, placedW + bonus + game.forgive);
+
+      spawnPopup('ИДЕАЛЬНО!', '#4c9a2a', 0);
+      spawnPerfectParticles(placedX + placedW / 2, worldToScreenY(cur.base + game.blockH));
+      SFX.perfect();
+    } else {
+      // ---- ОБЫЧНАЯ УСТАНОВКА С ОБРЕЗКОЙ ----
+      placedX = overlapLeft;
+      placedW = overlap;
+      game.streak = 0;
+      game.nextWidth = Math.min(game.startW, placedW + game.forgive);
+
+      var cutX, cutW;
+      if (delta > 0) { cutX = overlapRight; cutW = (cur.x + cur.w) - overlapRight; }
+      else           { cutX = cur.x;        cutW = overlapLeft - cur.x; }
+
+      if (cutW > 0.5) {
+        game.debris.push({
+          x: cutX, w: cutW, h: game.blockH,
+          y: cur.base, vy: 40, vx: (delta > 0 ? 70 : -70),
+          rot: 0, vrot: (delta > 0 ? 2.4 : -2.4),
+          style: cur.style, life: 2.0
+        });
+        SFX.cut();
+      }
+
+      game.shake = Math.min(9, Math.abs(delta) * 0.25);
+      spawnDust(placedX + placedW / 2, worldToScreenY(cur.base + game.blockH));
+      SFX.place();
+    }
+
+    game.tower.push({
+      x: placedX,
+      w: placedW,
+      base: cur.base,
+      style: cur.style,
+      landAt: performance.now()
+    });
+
+    game.score++;
+    taskAdd('floors', game.score, true);
+    profile.stats.floors++;
+    saveJSON(STORE_KEYS.stats, profile.stats);
+    if (game.score % JAR_STEP_FLOOR === 0) {
+      addPickle(activeSkin() ? activeSkin().id : 'classic');
+      showJarPop('В БАНКУ!');
+    }
+    // Кристаллы капают медленно: за обычную установку — ничего,
+    // за «ИДЕАЛЬНО!» — 2, плюс 1 за каждые 5 этажей.
+    game.gems += 1;   // 1 кристалл за этаж
+    if (game.score > profile.best) {
+      profile.best = game.score;
+      game.newBest = true;
+      save(STORE_KEYS.best, profile.best);
+    }
+
+    game.moving = null;
+    game.phase = PHASE.DROPPING;
+
+    setTimeout(function () {
+      if (game.state === STATE.PLAY) spawnMoving();
+    }, 110);
+
+    el.tapHint.classList.add('hidden');
+    updateHud();
+  }
+
+  function spawnPerfectParticles(sx, sy) {
+    var colors = ['#6cbf3f', '#e0a33c', '#2fa8a0', '#ffffff'];
+    for (var i = 0; i < 24; i++) {
+      var a = (Math.PI * 2 * i) / 24 + Math.random() * 0.3;
+      var sp = 90 + Math.random() * 180;
+      game.particles.push({
+        x: sx, y: sy,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 40,
+        size: 2 + Math.random() * 3.5,
+        life: 0.55 + Math.random() * 0.5,
+        color: colors[Math.floor(Math.random() * colors.length)]
+      });
+    }
+  }
+
+  function spawnDust(sx, sy) {
+    for (var i = 0; i < 7; i++) {
+      var a = Math.PI + Math.random() * Math.PI;
+      var sp = 30 + Math.random() * 70;
+      game.particles.push({
+        x: sx + (Math.random() - 0.5) * 30,
+        y: sy,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp * 0.5 - 20,
+        size: 1.5 + Math.random() * 2,
+        life: 0.3 + Math.random() * 0.25,
+        color: '#eaf3dd'
+      });
+    }
+  }
+
+  function spawnPopup(text, color, delay) {
+    game.popups.push({ text: text, color: color, t: -(delay || 0), life: 1.0 });
+  }
+
+  // Завершение партии: сохраняем рекорд, пишем в лидерборд, показываем экран
+  function finishGame() {
+    game.state = STATE.OVER;
+    profile.gems += game.gems;
+    save(STORE_KEYS.gems, profile.gems);
+
+    recordLocalScore(game.score);
+    submitRemoteScore(game.score);
+    // Засчитываем приглашение только после реально сыгранной партии —
+    // так мёртвые переходы по ссылке не приносят бонус
+    reportReferral();
+
+    el.hud.classList.add('hidden');
+    el.tapHint.classList.add('hidden');
+
+    el.overScore.textContent = game.score;
+    el.overBest.textContent = profile.best;
+    el.overGems.textContent = game.gems;
+    el.overGemsTotal.textContent = profile.gems;
+    el.overNewBest.classList.toggle('hidden', !game.newBest);
+
+    showScreen(el.screenOver);
+  }
+
+  /* ==========================================================================
+     9. ОБНОВЛЕНИЕ И РЕНДЕР
+     ========================================================================== */
+
+  var lastTime = 0;
+
+  function update(dt, now) {
+    // --- Камера: плавно следует за верхом башни ---
+    if (game.state === STATE.PLAY || game.state === STATE.OVER) {
+      var desired = towerTopWorld() + game.groundY - VIEW.h * 0.42;
+      game.cameraTarget = Math.max(0, desired);
+      var k = 1 - Math.pow(0.0015, dt); // сглаживание, не зависящее от FPS
+      game.camera += (game.cameraTarget - game.camera) * k;
+    }
+
+    if (game.shake > 0) game.shake = Math.max(0, game.shake - dt * 26);
+
+    // --- Движение летящего девайса ---
+    if (game.state === STATE.PLAY && game.phase === PHASE.MOVING && game.moving) {
+      var m = game.moving;
+      var maxX = Math.max(0, VIEW.w - m.w);
+      m.x += currentSpeed() * game.dir * dt;
+
+      if (m.x >= maxX) { m.x = maxX; game.dir = -1; }
+      else if (m.x <= 0) { m.x = 0; game.dir = 1; }
+
+      m.y = m.base + game.blockH * 2.4 + Math.sin(now * 0.004) * 4;
+    }
+
+    // --- Падающие обломки ---
+    for (var i = game.debris.length - 1; i >= 0; i--) {
+      var d = game.debris[i];
+      d.vy += GRAVITY * dt * 0.35;
+      d.y -= d.vy * dt;        // вниз = уменьшение «мировой» y
+      d.x += d.vx * dt;
+      d.rot += d.vrot * dt;
+      d.life -= dt;
+      if (d.life <= 0 || worldToScreenY(d.y) > VIEW.h + 200) game.debris.splice(i, 1);
+    }
+
+    // --- Частицы ---
+    for (var j = game.particles.length - 1; j >= 0; j--) {
+      var p = game.particles[j];
+      p.vy += 520 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) game.particles.splice(j, 1);
+    }
+
+    // --- Всплывающий текст ---
+    for (var k2 = game.popups.length - 1; k2 >= 0; k2--) {
+      var pop = game.popups[k2];
+      pop.t += dt;
+      if (pop.t > pop.life) game.popups.splice(k2, 1);
+    }
+
+    // --- Переход на экран проигрыша после анимации падения ---
+    if (game.state === STATE.PLAY && game.phase === PHASE.FALLING_OUT) {
+      if (now - game.overAt > 900) finishGame();
+    }
+  }
+
+  function render(now) {
+    var c = ctx;
+    c.setTransform(VIEW.dpr, 0, 0, VIEW.dpr, 0, 0);
+    c.clearRect(0, 0, VIEW.w, VIEW.h);
+
+    drawBackground(now);
+
+    c.save();
+    if (game.shake > 0.2) {
+      c.translate((Math.random() - 0.5) * game.shake, (Math.random() - 0.5) * game.shake);
+    }
+
+    drawGround();
+
+    // --- Башня (рисуем только видимые этажи) ---
+    for (var i = 0; i < game.tower.length; i++) {
+      var b = game.tower[i];
+      var top = worldToScreenY(b.base + game.blockH);
+      if (top > VIEW.h + 80 || top + game.blockH < -80) continue;
+
+      // Упругое приземление: короткое сжатие по вертикали
+      var h = game.blockH;
+      var y = top;
+      if (b.landAt) {
+        var age = (now - b.landAt) / 220;
+        if (age < 1) {
+          var squash = Math.sin(age * Math.PI) * 0.16 * (1 - age);
+          h = game.blockH * (1 - squash);
+          y = top + (game.blockH - h);
+        } else {
+          b.landAt = 0;
+        }
+      }
+      drawDevice(b.x, y, b.w, h, b.style, { glow: i === game.tower.length - 1 ? 10 : 0 });
+      drawBlockContact(b.x, y, b.w, h, i);
+    }
+
+    // --- Летящий девайс ---
+    if (game.moving) {
+      var m = game.moving;
+      var my = worldToScreenY(m.y + game.blockH);
+
+      drawDevice(m.x, my, m.w, game.blockH, m.style, { glow: 16 });
+    }
+
+    // --- Обломки ---
+    for (var d = 0; d < game.debris.length; d++) {
+      var o = game.debris[d];
+      var oy = worldToScreenY(o.y + o.h);
+      c.save();
+      c.globalAlpha = Math.max(0, Math.min(1, o.life));
+      c.translate(o.x + o.w / 2, oy + o.h / 2);
+      c.rotate(o.rot);
+      drawDevice(-o.w / 2, -o.h / 2, o.w, o.h, o.style, { glow: 0 });
+      c.restore();
+    }
+
+    // --- Частицы ---
+    for (var p = 0; p < game.particles.length; p++) {
+      var pt = game.particles[p];
+      c.save();
+      c.globalAlpha = Math.max(0, pt.life);
+      c.fillStyle = pt.color;
+      c.strokeStyle = INK;
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+      c.restore();
+    }
+
+    c.restore(); // снимаем тряску
+
+    // --- Всплывающий текст поверх всего, с мультяшной обводкой ---
+    for (var q = 0; q < game.popups.length; q++) {
+      var pop = game.popups[q];
+      if (pop.t < 0) continue;
+      var tt = pop.t / pop.life;
+      var alpha = tt < 0.15 ? tt / 0.15 : 1 - (tt - 0.15) / 0.85;
+      var scale = 0.8 + Math.min(1, tt * 4) * 0.35;
+      var yOff = -tt * 46;
+
+      c.save();
+      c.globalAlpha = Math.max(0, alpha);
+      c.translate(VIEW.w / 2, VIEW.h * 0.4 + yOff + q * 36);
+      c.scale(scale, scale);
+      c.rotate(-0.04);
+      c.font = '900 30px "Trebuchet MS", system-ui, sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.lineWidth = 7;
+      c.lineJoin = 'round';
+      c.strokeStyle = INK;
+      c.strokeText(pop.text, 0, 0);
+      c.fillStyle = pop.color;
+      c.fillText(pop.text, 0, 0);
+      c.restore();
+    }
+  }
+
+  function loop(now) {
+    var dt = lastTime ? Math.min((now - lastTime) / 1000, 0.05) : 0.016;
+    lastTime = now;
+
+    update(dt, now);
+    render(now);
+
+    requestAnimationFrame(loop);
+  }
+
+  /* ==========================================================================
+     10. ИНТЕРФЕЙС И ВВОД
+     ========================================================================== */
+
+  var el = {
+    hud: document.getElementById('hud'),
+    hudScore: document.getElementById('hudScore'),
+    hudGems: document.getElementById('hudGems'),
+    hudBest: document.getElementById('hudBest'),
+    hudStreak: document.getElementById('hudStreak'),
+    streakChip: document.querySelector('.chip-streak'),
+
+    screenStart: document.getElementById('screenStart'),
+    screenOver: document.getElementById('screenOver'),
+    screenBoard: document.getElementById('screenBoard'),
+    screenFriends: document.getElementById('screenFriends'),
+    screenJar: document.getElementById('screenJar'),
+    btnJar: document.getElementById('btnJar'),
+    btnJarBack: document.getElementById('btnJarBack'),
+    btnJarCollect: document.getElementById('btnJarCollect'),
+    jarGrid: document.getElementById('jarGrid'),
+    jarCount: document.getElementById('jarCount'),
+    jarCap: document.getElementById('jarCap'),
+    jarPending: document.getElementById('jarPending'),
+    jarRate: document.getElementById('jarRate'),
+    jarBadge: document.getElementById('jarBadge'),
+    jarPop: document.getElementById('jarPop'),
+    screenTasks: document.getElementById('screenTasks'),
+    btnTasks: document.getElementById('btnTasks'),
+    btnTasksBack: document.getElementById('btnTasksBack'),
+    tasksList: document.getElementById('tasksList'),
+    tasksBadge: document.getElementById('tasksBadge'),
+    btnTheme: document.getElementById('btnTheme'),
+    screenDaily: document.getElementById('screenDaily'),
+    btnDaily: document.getElementById('btnDaily'),
+    btnDailyBack: document.getElementById('btnDailyBack'),
+    btnDailyClaim: document.getElementById('btnDailyClaim'),
+    dailyList: document.getElementById('dailyList'),
+    dailyStreak: document.getElementById('dailyStreak'),
+    dailyBadge: document.getElementById('dailyBadge'),
+    screenAch: document.getElementById('screenAch'),
+    btnAch: document.getElementById('btnAch'),
+    btnAchBack: document.getElementById('btnAchBack'),
+    achList: document.getElementById('achList'),
+    titleStrip: document.getElementById('titleStrip'),
+    jarRateOne: document.getElementById('jarRateOne'),
+    jarCapH: document.getElementById('jarCapH'),
+    jarRateLvl: document.getElementById('jarRateLvl'),
+    jarCapLvl: document.getElementById('jarCapLvl'),
+    btnUpRate: document.getElementById('btnUpRate'),
+    btnUpCap: document.getElementById('btnUpCap'),
+    jarMore: document.getElementById('jarMore'),
+    startBest: document.getElementById('startBest'),
+    startGems: document.getElementById('startGems'),
+
+    btnPlay: document.getElementById('btnPlay'),
+    btnAgain: document.getElementById('btnAgain'),
+    btnMenu: document.getElementById('btnMenu'),
+    btnSound: document.getElementById('btnSound'),
+    btnBoard: document.getElementById('btnBoard'),
+    btnBoardBack: document.getElementById('btnBoardBack'),
+    btnFriends: document.getElementById('btnFriends'),
+    btnFriendsBack: document.getElementById('btnFriendsBack'),
+    btnInvite: document.getElementById('btnInvite'),
+    btnCopyLink: document.getElementById('btnCopyLink'),
+
+    refCount: document.getElementById('refCount'),
+    refEarned: document.getElementById('refEarned'),
+    refBonus: document.getElementById('refBonus'),
+    refNote: document.getElementById('refNote'),
+    toast: document.getElementById('toast'),
+
+    boardList: document.getElementById('boardList'),
+    boardNote: document.getElementById('boardNote'),
+
+    overScore: document.getElementById('overScore'),
+    overBest: document.getElementById('overBest'),
+    overGems: document.getElementById('overGems'),
+    overGemsTotal: document.getElementById('overGemsTotal'),
+    overNewBest: document.getElementById('overNewBest'),
+
+    screenSkins: document.getElementById('screenSkins'),
+    btnSkins: document.getElementById('btnSkins'),
+    btnSkinsBack: document.getElementById('btnSkinsBack'),
+    skinGrid: document.getElementById('skinGrid'),
+    skinPreview: document.getElementById('skinPreview'),
+    skinCurrentName: document.getElementById('skinCurrentName'),
+    skinStripImg: document.getElementById('skinStripImg'),
+    skinStripName: document.getElementById('skinStripName'),
+    skinGems: document.getElementById('skinGems'),
+
+    tapHint: document.getElementById('tapHint')
+  };
+
+  function updateHud() {
+    el.hudScore.textContent = game.score;
+    el.hudGems.textContent = game.gems;
+    el.hudBest.textContent = profile.best;
+    el.hudStreak.textContent = game.streak;
+    el.streakChip.classList.toggle('hot', game.streak >= 2);
+  }
+
+  function updateMenuStats() {
+    el.startBest.textContent = profile.best;
+    el.startGems.textContent = profile.gems;
+  }
+
+  function showScreen(target) {
+    [el.screenStart, el.screenOver, el.screenBoard, el.screenFriends, el.screenSkins, el.screenJar, el.screenTasks, el.screenDaily, el.screenAch].forEach(function (s) {
+      s.classList.toggle('hidden', s !== target);
+    });
+  }
+
+  // Короткое уведомление вместо alert() — само исчезает через 2 секунды
+  var toastTimer = 0;
+  function showToast(text) {
+    el.toast.textContent = text;
+    el.toast.classList.remove('hidden');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      el.toast.classList.add('hidden');
+    }, 2200);
+  }
+
+  // --- Экран «Друзья» ---
+  function openFriends() {
+    game.state = STATE.FRIENDS;
+    el.hud.classList.add('hidden');
+
+    el.refBonus.textContent = REF_BONUS;
+    el.refCount.textContent = referral.count;
+    el.refEarned.textContent = referral.earned;
+
+    // Честно пишем, в каком режиме мы сейчас находимся
+    if (!LEADERBOARD_API) {
+      el.refNote.textContent = 'Приглашения заработают, когда подключишь сервер: ' +
+        'без него нельзя проверить, что друг действительно новый (см. README).';
+    } else if (!tg) {
+      el.refNote.textContent = 'Открой игру в Telegram, чтобы приглашать друзей.';
+    } else {
+      el.refNote.textContent = 'Ссылка привязана к твоему аккаунту Telegram.';
+      fetchReferralStats().then(function (data) {
+        if (data && game.state === STATE.FRIENDS) {
+          el.refCount.textContent = referral.count;
+          el.refEarned.textContent = referral.earned;
+        }
+      });
+    }
+
+    showScreen(el.screenFriends);
+  }
+
+  function goMenu() {
+    renderTitleStrip();
+    game.state = STATE.MENU;
+    game.moving = null;
+    game.debris = [];
+    game.particles = [];
+    game.popups = [];
+    el.hud.classList.add('hidden');
+    el.tapHint.classList.add('hidden');
+    updateMenuStats();
+    updateSkinUI();
+    refreshJarBadge();
+    refreshTasksBadge();
+    renderDaily();
+    renderTitleStrip();
+    showScreen(el.screenStart);
+  }
+
+  /* ==========================================================================
+     БАНКА ОГУРЦОВ
+     ========================================================================== */
+  function jarRate() { return JAR_RATE_BASE + (profile.up.rate || 0); }
+  function jarCapH() { return JAR_CAP_BASE + (profile.up.cap || 0) * 4; }
+  function jarCount() { return profile.jarSkins.length; }
+
+  function jarPending() {
+    var n = jarCount();
+    if (!n || !profile.jarAt) return 0;
+    var hours = Math.min((Date.now() - profile.jarAt) / 3600000, jarCapH());
+    return Math.floor(hours * jarRate() * n);
+  }
+
+  function addPickle(skinId) {
+    profile.jarSkins.push(skinId || 'classic');
+    profile.jar = profile.jarSkins.length;
+    saveJSON(STORE_KEYS.jarSkins, profile.jarSkins);
+    save(STORE_KEYS.jar, profile.jar);
+    if (!profile.jarAt) {
+      profile.jarAt = Date.now();
+      save(STORE_KEYS.jarAt, profile.jarAt);
+    }
+    refreshJarBadge();
+    return true;
+  }
+
+  function claimJar() {
+    var pending = jarPending();
+    if (pending <= 0) return 0;
+    profile.gems += pending;
+    profile.jarAt = Date.now();
+    profile.stats.claimed = (profile.stats.claimed || 0) + 1;
+    save(STORE_KEYS.gems, profile.gems);
+    save(STORE_KEYS.jarAt, profile.jarAt);
+    saveJSON(STORE_KEYS.stats, profile.stats);
+    updateMenuStats();
+    updateSkinUI();
+    return pending;
+  }
+
+  var JAR_ART = { cosmic: 1, gold: 1, ice: 1, robot: 1, magma: 1, rich: 1 };
+  function jarSkinImg(id) {
+    // для этих скинов есть отдельная «баночная» моделька
+    if (JAR_ART[id]) return 'jar-' + id + '.png?v=1';
+    return 'jar-pickle.png?v=2';
+  }
+
+  function renderJar() {
+    if (!el.jarGrid) return;
+    var n = jarCount();
+    el.jarCount.textContent = n;
+    if (el.jarCap) el.jarCap.textContent = '∞';
+    el.jarPending.textContent = jarPending();
+    el.jarRate.textContent = jarRate() * n;
+    if (el.jarRateOne) el.jarRateOne.textContent = jarRate();
+    if (el.jarCapH) el.jarCapH.textContent = jarCapH();
+    if (el.jarRateLvl) el.jarRateLvl.textContent = profile.up.rate;
+    if (el.jarCapLvl) el.jarCapLvl.textContent = profile.up.cap;
+    if (el.btnUpRate) {
+      el.btnUpRate.textContent = profile.up.rate >= UP_MAX
+        ? 'Скорость: МАКС'
+        : 'Скорость +1 ◆/ч — ' + (UP_RATE_COST * (profile.up.rate + 1)) + ' ◆';
+      el.btnUpRate.disabled = profile.up.rate >= UP_MAX;
+    }
+    if (el.btnUpCap) {
+      el.btnUpCap.textContent = profile.up.cap >= UP_MAX
+        ? 'Накопление: МАКС'
+        : 'Накопление +4 ч — ' + (UP_CAP_COST * (profile.up.cap + 1)) + ' ◆';
+      el.btnUpCap.disabled = profile.up.cap >= UP_MAX;
+    }
+
+    el.jarGrid.innerHTML = '';
+    var cells = Math.max(12, Math.min(n, 24));
+    for (var i = 0; i < cells; i++) {
+      var cell = document.createElement('div');
+      cell.className = 'jar-cell' + (i < n ? ' full' : '');
+      if (i < n) {
+        var img = document.createElement('img');
+        img.src = jarSkinImg(profile.jarSkins[i]);
+        img.alt = '';
+        cell.appendChild(img);
+      }
+      el.jarGrid.appendChild(cell);
+    }
+    if (el.jarMore) {
+      el.jarMore.textContent = n > 24 ? '+ ещё ' + (n - 24) : '';
+    }
+  }
+
+  function buyUpRate() {
+    if (profile.up.rate >= UP_MAX) return;
+    var cost = UP_RATE_COST * (profile.up.rate + 1);
+    if (profile.gems < cost) { showToast('Нужно ' + cost + ' ◆'); return; }
+    profile.gems -= cost;
+    profile.up.rate++;
+    save(STORE_KEYS.gems, profile.gems);
+    saveJSON(STORE_KEYS.up, profile.up);
+    updateMenuStats(); updateSkinUI(); renderJar();
+    showToast('Скорость банки: +1 ◆/ч');
+  }
+
+  function buyUpCap() {
+    if (profile.up.cap >= UP_MAX) return;
+    var cost = UP_CAP_COST * (profile.up.cap + 1);
+    if (profile.gems < cost) { showToast('Нужно ' + cost + ' ◆'); return; }
+    profile.gems -= cost;
+    profile.up.cap++;
+    save(STORE_KEYS.gems, profile.gems);
+    saveJSON(STORE_KEYS.up, profile.up);
+    updateMenuStats(); updateSkinUI(); renderJar();
+    showToast('Накопление: +4 часа');
+  }
+
+  var jarPopTimer = null;
+  function showJarPop(text) {
+    if (!el.jarPop) return;
+    var label = el.jarPop.querySelector('.jar-pop-text');
+    if (label) label.textContent = text || 'В БАНКУ!';
+    el.jarPop.classList.remove('hidden', 'play');
+    void el.jarPop.offsetWidth;
+    el.jarPop.classList.add('play');
+    if (jarPopTimer) clearTimeout(jarPopTimer);
+    jarPopTimer = setTimeout(function () {
+      el.jarPop.classList.add('hidden');
+      el.jarPop.classList.remove('play');
+    }, 1800);
+    SFX.perfect();
+  }
+
+  function refreshJarBadge() {
+    if (!el.jarBadge) return;
+    el.jarBadge.classList.toggle('hidden', jarPending() < 1);
+  }
+
+  function openJar() {
+    game.state = STATE.JAR;
+    el.hud.classList.add('hidden');
+    el.tapHint.classList.add('hidden');
+    renderJar();
+    refreshJarBadge();
+    showScreen(el.screenJar);
+  }
+
+  /* ==========================================================================
+     ЕЖЕДНЕВНАЯ НАГРАДА (7 дней)
+     ========================================================================== */
+  var DAILY_REWARDS = [100, 150, 200, 250, 300, 400, 700];
+
+  function dailyDay() {
+    var d = profile.daily || { last: '', streak: 0 };
+    if (d.last === todayKey()) return ((d.streak - 1) % 7 + 7) % 7 + 1;
+    return (d.streak % 7) + 1;
+  }
+
+  function canClaimDaily() { return (profile.daily.last || '') !== todayKey(); }
+
+  function claimDaily() {
+    if (!canClaimDaily()) return 0;
+    var d = profile.daily;
+    var y = new Date();
+    y.setDate(y.getDate() - 1);
+    var yKey = y.getFullYear() + '-' + (y.getMonth() + 1) + '-' + y.getDate();
+    d.streak = (d.last === yKey) ? d.streak + 1 : 1;
+    d.last = todayKey();
+    var day = ((d.streak - 1) % 7) + 1;
+    var reward = DAILY_REWARDS[day - 1];
+    profile.gems += reward;
+    save(STORE_KEYS.gems, profile.gems);
+    saveJSON(STORE_KEYS.daily, d);
+    updateMenuStats();
+    updateSkinUI();
+    renderDaily();
+    showToast('День ' + day + ': +' + reward + ' ◆');
+    return reward;
+  }
+
+  function renderDaily() {
+    if (!el.dailyList) return;
+    var day = dailyDay();
+    var claimed = !canClaimDaily();
+    el.dailyList.innerHTML = '';
+    for (var i = 0; i < 7; i++) {
+      var card = document.createElement('div');
+      var state = (i + 1 < day) ? 'done' : (i + 1 === day ? (claimed ? 'done' : 'today') : 'next');
+      card.className = 'daily-card ' + state;
+      card.innerHTML = '<div class="daily-day">День ' + (i + 1) + '</div>' +
+        '<div class="daily-reward">+' + DAILY_REWARDS[i] + ' ◆</div>';
+      el.dailyList.appendChild(card);
+    }
+    if (el.btnDailyClaim) {
+      el.btnDailyClaim.disabled = claimed;
+      el.btnDailyClaim.textContent = claimed
+        ? 'УЖЕ ПОЛУЧЕНО — ДО ЗАВТРА'
+        : 'ЗАБРАТЬ +' + DAILY_REWARDS[day - 1] + ' ◆';
+    }
+    if (el.dailyStreak) el.dailyStreak.textContent = profile.daily.streak || 0;
+    if (el.dailyBadge) el.dailyBadge.classList.toggle('hidden', !canClaimDaily());
+  }
+
+  function openDaily() {
+    game.state = STATE.DAILY;
+    el.hud.classList.add('hidden');
+    el.tapHint.classList.add('hidden');
+    renderDaily();
+    showScreen(el.screenDaily);
+  }
+
+  /* ==========================================================================
+     ДОСТИЖЕНИЯ
+     ========================================================================== */
+  var ACH_DEFS = [
+    { id: 'floor1', title: 'Первый этаж', reward: 50, need: 1, titleName: 'Новичок', get: function () { return profile.stats.floors; } },
+    { id: 'best10', title: '10 этажей за игру', reward: 100, need: 10, titleName: 'Строитель', get: function () { return profile.best; } },
+    { id: 'best30', title: '30 этажей за игру', reward: 250, need: 30, titleName: 'Башенный', get: function () { return profile.best; } },
+    { id: 'best50', title: '50 этажей за игру', reward: 500, need: 50, titleName: 'Небоскрёб', get: function () { return profile.best; } },
+    { id: 'perf100', title: '100 идеальных', reward: 300, need: 100, titleName: 'Снайпер', get: function () { return profile.stats.perfects; } },
+    { id: 'floors500', title: '500 этажей всего', reward: 600, need: 500, titleName: 'Архитектор', get: function () { return profile.stats.floors; } },
+    { id: 'skins5', title: '5 скинов', reward: 500, need: 5, titleName: 'Коллекционер', get: function () { return ownedSkinsCount(); } },
+    { id: 'skins9', title: 'Все 9 скинов', reward: 1500, need: 9, titleName: 'Легенда C-137', get: function () { return ownedSkinsCount(); } },
+    { id: 'banker', title: 'Собрать банку 10 раз', reward: 400, need: 10, titleName: 'Банкир', get: function () { return profile.stats.claimed || 0; } },
+    { id: 'friend', title: 'Пригласить друга', reward: 150, need: 1, titleName: 'Зазывала', get: function () { return referral.count || 0; } }
+  ];
+
+  function ownedSkinsCount() {
+    if (!window.DRAG_SKINS) return 1;
+    var owned = loadJSON(STORE_KEYS.owned, []);
+    if (!Array.isArray(owned)) owned = [];
+    if (owned.indexOf('classic') < 0) owned.push('classic');
+    return owned.length;
+  }
+
+  function achDone(def) { return def.get() >= def.need; }
+  function achClaimed(def) { return (profile.ach || []).indexOf(def.id) >= 0; }
+
+  function renderAch() {
+    if (!el.achList) return;
+    el.achList.innerHTML = '';
+    for (var i = 0; i < ACH_DEFS.length; i++) {
+      (function (def) {
+        var cur = Math.min(def.get(), def.need);
+        var done = achDone(def);
+        var claimed = achClaimed(def);
+        var row = document.createElement('div');
+        row.className = 'ach-row' + (claimed ? ' claimed' : '');
+        row.innerHTML = '<div class="ach-head"><span>' + def.title + '</span>' +
+          '<span class="task-reward">+' + def.reward + ' ◆</span></div>' +
+          '<div class="task-bar"><i style="width:' + Math.round(cur / def.need * 100) + '%"></i></div>' +
+          '<div class="task-foot">' + cur + ' / ' + def.need + '</div>';
+        var btn = document.createElement('button');
+        btn.className = 'btn btn-primary task-btn';
+        btn.textContent = claimed ? 'ПОЛУЧЕНО' : (done ? 'ЗАБРАТЬ' : 'В ПРОЦЕССЕ');
+        btn.disabled = claimed || !done;
+        btn.addEventListener('click', function () { claimAch(def); });
+        row.appendChild(btn);
+
+        if (def.titleName) {
+          var tbtn = document.createElement('button');
+          tbtn.className = 'btn btn-ghost task-btn title-btn';
+          if (!claimed) {
+            tbtn.textContent = '🔒 Титул «' + def.titleName + '»';
+            tbtn.disabled = true;
+          } else if (profile.title === def.titleName) {
+            tbtn.textContent = '✓ Титул «' + def.titleName + '» активен';
+            tbtn.disabled = false;
+          } else {
+            tbtn.textContent = 'Поставить титул «' + def.titleName + '»';
+            tbtn.disabled = false;
+          }
+          tbtn.addEventListener('click', function () { equipTitle(def.titleName); });
+          row.appendChild(tbtn);
+        }
+        el.achList.appendChild(row);
+      })(ACH_DEFS[i]);
+    }
+  }
+
+  function claimAch(def) {
+    if (!achDone(def) || achClaimed(def)) return;
+    profile.ach.push(def.id);
+    profile.gems += def.reward;
+    if (def.titleName && profile.titles.indexOf(def.titleName) < 0) {
+      profile.titles.push(def.titleName);
+      saveJSON(STORE_KEYS.titles, profile.titles);
+    }
+    saveJSON(STORE_KEYS.ach, profile.ach);
+    save(STORE_KEYS.gems, profile.gems);
+    updateMenuStats(); updateSkinUI(); renderAch(); renderTitleStrip();
+    showToast('Достижение: +' + def.reward + ' ◆ и титул «' + def.titleName + '»');
+  }
+
+  function equipTitle(name) {
+    profile.title = profile.title === name ? '' : name;
+    try { window.localStorage.setItem(STORE_KEYS.title, profile.title); } catch (e) {}
+    renderTitleStrip();
+    renderAch();
+    showToast(profile.title ? 'Титул: ' + profile.title : 'Титул снят');
+  }
+
+  function renderTitleStrip() {
+    if (!el.titleStrip) return;
+    el.titleStrip.textContent = profile.title ? 'Титул: ' + profile.title : 'Титул не выбран';
+  }
+
+  function openAch() {
+    game.state = STATE.ACH;
+    el.hud.classList.add('hidden');
+    el.tapHint.classList.add('hidden');
+    renderAch();
+    showScreen(el.screenAch);
+  }
+
+  /* ==========================================================================
+     ЕЖЕДНЕВНЫЕ ЗАДАНИЯ
+     ========================================================================== */
+  var TASK_DEFS = [
+    { id: 'perfect', title: '20 идеальных попаданий', need: 20, reward: 150 },
+    { id: 'floors', title: '30 этажей за одну игру', need: 30, reward: 200 },
+    { id: 'blocks', title: '80 блоков за день', need: 80, reward: 150 }
+  ];
+
+  function todayKey() {
+    var d = new Date();
+    return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+  }
+
+  function loadTasks() {
+    var t = loadJSON(STORE_KEYS.tasks, null);
+    if (!t || t.date !== todayKey()) {
+      t = { date: todayKey(), progress: { perfect: 0, floors: 0, blocks: 0 }, claimed: [] };
+      saveJSON(STORE_KEYS.tasks, t);
+    }
+    if (!t.progress) t.progress = { perfect: 0, floors: 0, blocks: 0 };
+    if (!t.claimed) t.claimed = [];
+    return t;
+  }
+
+  var tasksState = loadTasks();
+
+  function taskAdd(id, value, isMax) {
+    if (isMax) {
+      tasksState.progress[id] = Math.max(tasksState.progress[id] || 0, value);
+    } else {
+      tasksState.progress[id] = (tasksState.progress[id] || 0) + value;
+    }
+    saveJSON(STORE_KEYS.tasks, tasksState);
+    refreshTasksBadge();
+  }
+
+  function taskDone(def) { return (tasksState.progress[def.id] || 0) >= def.need; }
+  function taskClaimed(def) { return tasksState.claimed.indexOf(def.id) >= 0; }
+
+  function refreshTasksBadge() {
+    if (!el.tasksBadge) return;
+    var ready = 0;
+    for (var i = 0; i < TASK_DEFS.length; i++) {
+      if (taskDone(TASK_DEFS[i]) && !taskClaimed(TASK_DEFS[i])) ready++;
+    }
+    el.tasksBadge.classList.toggle('hidden', ready === 0);
+  }
+
+  function renderTasks() {
+    if (!el.tasksList) return;
+    el.tasksList.innerHTML = '';
+    for (var i = 0; i < TASK_DEFS.length; i++) {
+      var def = TASK_DEFS[i];
+      var cur = Math.min(tasksState.progress[def.id] || 0, def.need);
+      var done = taskDone(def);
+      var claimed = taskClaimed(def);
+
+      var row = document.createElement('div');
+      row.className = 'task-row' + (claimed ? ' claimed' : '');
+
+      var head = document.createElement('div');
+      head.className = 'task-head';
+      head.innerHTML = '<span>' + def.title + '</span><span class="task-reward">+' + def.reward + ' ◆</span>';
+
+      var bar = document.createElement('div');
+      bar.className = 'task-bar';
+      var fill = document.createElement('i');
+      fill.style.width = Math.round(cur / def.need * 100) + '%';
+      bar.appendChild(fill);
+
+      var foot = document.createElement('div');
+      foot.className = 'task-foot';
+      foot.textContent = cur + ' / ' + def.need;
+
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-primary task-btn';
+      btn.textContent = claimed ? 'ПОЛУЧЕНО' : (done ? 'ЗАБРАТЬ' : 'В ПРОЦЕССЕ');
+      btn.disabled = claimed || !done;
+      (function (d) {
+        btn.addEventListener('click', function () { claimTask(d); });
+      })(def);
+
+      row.appendChild(head);
+      row.appendChild(bar);
+      row.appendChild(foot);
+      row.appendChild(btn);
+      el.tasksList.appendChild(row);
+    }
+  }
+
+  function claimTask(def) {
+    if (!taskDone(def) || taskClaimed(def)) return;
+    tasksState.claimed.push(def.id);
+    saveJSON(STORE_KEYS.tasks, tasksState);
+    profile.gems += def.reward;
+    save(STORE_KEYS.gems, profile.gems);
+    updateMenuStats();
+    if (typeof updateSkinUI === 'function') updateSkinUI();
+    renderTasks();
+    refreshTasksBadge();
+    SFX.ui();
+    showToast('Задание выполнено: +' + def.reward + ' ◆');
+  }
+
+  function openTasks() {
+    game.state = STATE.TASKS;
+    el.hud.classList.add('hidden');
+    el.tapHint.classList.add('hidden');
+    renderTasks();
+    showScreen(el.screenTasks);
+  }
+
+  function applyTheme() {
+    var night = settings.theme === 'dark';
+    document.body.classList.toggle('night', night);
+    if (el.btnTheme) el.btnTheme.textContent = night ? '☀️ День' : '🌙 Ночь';
+  }
+
+  // --- Экран скинов: превью, цены, выделение выбранного ---
+  function skinBalance() {
+    if (el.skinGems) el.skinGems.textContent = profile.gems;
+  }
+
+  function updateSkinUI() {
+    var sk = activeSkin();
+    if (!sk) return;
+
+    if (el.skinPreview) { el.skinPreview.src = sk.img; el.skinPreview.alt = sk.name; }
+    if (el.skinCurrentName) el.skinCurrentName.textContent = sk.name;
+    if (el.skinStripImg) { el.skinStripImg.src = sk.img; el.skinStripImg.alt = sk.name; }
+    if (el.skinStripName) el.skinStripName.textContent = sk.name;
+    skinBalance();
+
+    if (!el.skinGrid) return;
+    var cards = el.skinGrid.querySelectorAll('.skin-card');
+    for (var i = 0; i < cards.length; i++) {
+      var id = cards[i].getAttribute('data-skin');
+      var owned = isOwned(id);
+      var on = id === sk.id;
+
+      cards[i].classList.toggle('selected', on);
+      cards[i].classList.toggle('locked', !owned);
+      cards[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+
+      var badge = cards[i].querySelector('.skin-badge');
+      if (badge) {
+        var price = SKINS_BY_ID[id] ? SKINS_BY_ID[id].price : 0;
+        badge.textContent = on ? '✓ ВЫБРАН' : (owned ? 'ВЫБРАТЬ' : '◆ ' + price);
+        badge.classList.toggle('skin-badge-price', !owned);
+      }
+    }
+  }
+
+  function buildSkinGrid() {
+    if (!el.skinGrid) return;
+    el.skinGrid.innerHTML = '';
+
+    for (var i = 0; i < SKIN_CATALOG.length; i++) {
+      (function (sk) {
+        var card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'skin-card';
+        card.setAttribute('data-skin', sk.id);
+
+        var img = document.createElement('img');
+        img.className = 'skin-card-img';
+        img.src = sk.img;
+        img.alt = sk.name;
+        img.loading = 'lazy';
+
+        var name = document.createElement('span');
+        name.className = 'skin-card-name';
+        name.textContent = sk.name;
+
+        var badge = document.createElement('span');
+        badge.className = 'skin-badge';
+
+        card.appendChild(img);
+        card.appendChild(name);
+        card.appendChild(badge);
+
+        card.addEventListener('click', function () {
+          var result = pickSkin(sk.id);
+
+          if (result === 'bought') {
+            SFX.perfect();
+            showToast('Скин «' + sk.name + '» открыт!');
+            updateMenuStats();
+          } else if (result === 'poor') {
+            SFX.ui();
+            showToast('Не хватает ' + (sk.price - profile.gems) + ' ◆ — сыграй ещё партию');
+            return;
+          } else {
+            SFX.ui();
+          }
+
+          updateSkinUI();
+        });
+
+        el.skinGrid.appendChild(card);
+      })(SKIN_CATALOG[i]);
+    }
+  }
+
+  function openSkins() {
+    game.state = STATE.SKINS;
+    el.hud.classList.add('hidden');
+    el.tapHint.classList.add('hidden');
+    buildSkinGrid();
+    updateSkinUI();
+    showScreen(el.screenSkins);
+  }
+
+  // --- Отрисовка списка лидеров ---
+  function renderBoard(rows, isRemote) {
+    el.boardList.innerHTML = '';
+
+    if (!rows || !rows.length) {
+      var empty = document.createElement('li');
+      empty.className = 'board-empty';
+      empty.textContent = 'Пока пусто. Сыграй партию — и займёшь первое место.';
+      el.boardList.appendChild(empty);
+    } else {
+      var myKey = tgUser.id || 'local';
+      rows.slice(0, 20).forEach(function (row, idx) {
+        var li = document.createElement('li');
+        li.className = 'board-row' + (String(row.id) === String(myKey) ? ' me' : '');
+
+        var rank = document.createElement('span');
+        rank.className = 'board-rank';
+        rank.textContent = (idx + 1) + '.';
+
+        var name = document.createElement('span');
+        name.className = 'board-name';
+        name.textContent = row.name || 'Игрок'; // textContent — защита от HTML-инъекций
+
+        if (row.title) {
+          var ttag = document.createElement('span');
+          ttag.className = 'board-title';
+          ttag.textContent = row.title;
+          name.appendChild(ttag);
+        }
+
+        var score = document.createElement('span');
+        score.className = 'board-score';
+        score.textContent = row.score;
+
+        li.appendChild(rank);
+        li.appendChild(name);
+        li.appendChild(score);
+        el.boardList.appendChild(li);
+      });
+    }
+
+    el.boardNote.textContent = isRemote
+      ? 'Общий рейтинг игроков Telegram.'
+      : 'Локальный рейтинг этого устройства. Общий включится, когда подключишь сервер (см. README).';
+  }
+
+  function openBoard() {
+    game.state = STATE.BOARD;
+    el.hud.classList.add('hidden');
+    renderBoard(leaderboard.rows, false); // сразу показываем локальные данные
+    showScreen(el.screenBoard);
+
+    // Если настроен сервер — подменяем на общий топ, когда он придёт
+    fetchRemoteBoard().then(function (remote) {
+      if (remote && game.state === STATE.BOARD) {
+        leaderboard.remote = true;
+        renderBoard(remote, true);
+      }
+    });
+  }
+
+  function refreshToggles() {
+    el.btnSound.textContent = settings.sound ? '🔊 Звук: вкл' : '🔇 Звук: выкл';
+    el.btnSound.setAttribute('aria-pressed', settings.sound ? 'true' : 'false');
+    applyTheme();
+  }
+
+  // --- Кнопки ---
+  el.btnPlay.addEventListener('click', function () {
+    ensureAudio(); SFX.ui();
+    startGame();
+  });
+
+  el.btnAgain.addEventListener('click', function () { SFX.ui(); startGame(); });
+  el.btnMenu.addEventListener('click', function () { SFX.ui(); goMenu(); });
+  el.btnBoard.addEventListener('click', function () { SFX.ui(); openBoard(); });
+  el.btnBoardBack.addEventListener('click', function () { SFX.ui(); goMenu(); });
+  el.btnFriends.addEventListener('click', function () { SFX.ui(); openFriends(); });
+  el.btnFriendsBack.addEventListener('click', function () { SFX.ui(); goMenu(); });
+  el.btnJar.addEventListener('click', function () { SFX.ui(); openJar(); });
+  el.btnJarBack.addEventListener('click', function () { SFX.ui(); goMenu(); });
+  el.btnJarCollect.addEventListener('click', function () {
+    var got = claimJar();
+    renderJar();
+    SFX.ui();
+    showToast(got > 0 ? 'Собрано ' + got + ' ◆' : 'Пока нечего собирать');
+  });
+  el.btnTasks.addEventListener('click', function () { SFX.ui(); openTasks(); });
+  el.btnDaily.addEventListener('click', function () { SFX.ui(); openDaily(); });
+  el.btnDailyBack.addEventListener('click', function () { SFX.ui(); goMenu(); });
+  el.btnDailyClaim.addEventListener('click', function () { SFX.ui(); claimDaily(); });
+  el.btnAch.addEventListener('click', function () { SFX.ui(); openAch(); });
+  el.btnAchBack.addEventListener('click', function () { SFX.ui(); goMenu(); });
+  el.btnUpRate.addEventListener('click', function () { SFX.ui(); buyUpRate(); });
+  el.btnUpCap.addEventListener('click', function () { SFX.ui(); buyUpCap(); });
+  el.btnTasksBack.addEventListener('click', function () { SFX.ui(); goMenu(); });
+  el.btnTheme.addEventListener('click', function () {
+    settings.theme = settings.theme === 'dark' ? 'light' : 'dark';
+    try { window.localStorage.setItem(STORE_KEYS.theme, settings.theme); } catch (e) {}
+    applyTheme();
+    SFX.ui();
+  });
+  el.btnInvite.addEventListener('click', function () { SFX.ui(); inviteFriend(); });
+  el.btnCopyLink.addEventListener('click', function () { SFX.ui(); copyInviteLink(); });
+  el.btnSkins.addEventListener('click', function () { SFX.ui(); openSkins(); });
+  el.btnSkinsBack.addEventListener('click', function () { SFX.ui(); goMenu(); });
+
+  el.btnSound.addEventListener('click', function () {
+    settings.sound = !settings.sound;
+    save(STORE_KEYS.sound, settings.sound ? 1 : 0);
+    refreshToggles();
+    if (settings.sound) { ensureAudio(); SFX.ui(); }
+  });
+
+  // --- Основной ввод: тап / клик / пробел ---
+  function onTap(e) {
+    if (game.state !== STATE.PLAY) return;
+    if (e && e.target && e.target.closest && e.target.closest('.btn')) return;
+    dropBlock();
+  }
+
+  window.addEventListener('pointerdown', onTap, { passive: true });
+
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'Space' || e.code === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (game.state === STATE.PLAY) dropBlock();
+      else if (game.state === STATE.MENU) { ensureAudio(); startGame(); }
+      else if (game.state === STATE.OVER) startGame();
+    }
+  });
+
+  // Запрещаем двойной тап-зум на iOS
+  document.addEventListener('dblclick', function (e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden && audioCtx && audioCtx.state === 'running') {
+      try { audioCtx.suspend(); } catch (err) { /* ignore */ }
+    }
+  });
+
+  /* ==========================================================================
+     СТАРТ
+     ========================================================================== */
+
+  initTelegram();
+  resizeCanvas();
+  initClouds();
+  preloadSkinImages();
+  updateMenuStats();
+  updateSkinUI();
+  refreshToggles();
+  showScreen(el.screenStart);
+  requestAnimationFrame(loop);
+
+})();
+
+</script>
 </body>
 </html>
